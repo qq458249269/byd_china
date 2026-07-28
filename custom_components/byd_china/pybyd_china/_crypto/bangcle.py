@@ -118,12 +118,12 @@ class BangcleCodec:
         else:
             _logger.debug("Loading Bangcle tables from package data")
             try:
-                ref = importlib.resources.files("pybyd").joinpath("data/bangcle_tables.bin")
+                ref = Path(__file__).resolve().parent.parent / "data" / "bangcle_tables.bin"
                 raw = ref.read_bytes()
             except FileNotFoundError as exc:
                 raise BangcleTableLoadError(
-                    "bangcle_tables.bin not found in pybyd package data. "
-                    "Reinstall/upgrade pybyd so wheel data files are included."
+                    f"bangcle_tables.bin not found at {ref}. "
+                    "Ensure the data file is bundled with the integration."
                 ) from exc
 
         self._tables = _load_tables_from_bin(raw)

@@ -1,0 +1,9 @@
+{
+  "name": "BYD China",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["byd_china"],
+  "country": "CN",
+  "homeassistant": "2024.6.0",
+  "iot_class": "Cloud Polling"
+}

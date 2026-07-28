@@ -1,8 +1,10 @@
 {
   "domain": "byd_china",
   "name": "BYD China",
-  "codeowners": [],
+  "codeowners": ["@qq458249269"],
   "config_flow": true,
+  "documentation": "https://github.com/qq458249269/byd_china",
+  "issue_tracker": "https://github.com/qq458249269/byd_china/issues",
   "iot_class": "cloud_polling",
   "requirements": [],
   "version": "1.0.0",
