@@ -1,0 +1,160 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "连接到 BYD（中国）",
+        "description": "设置您的 BYD 国内帐户。",
+        "data": {
+          "username": "手机号码",
+          "password": "密码",
+          "target_brand": "品牌",
+          "poll_interval": "轮询间隔（秒）",
+          "gps_poll_interval": "GPS 轮询间隔（秒）",
+          "smart_gps_polling": "智能 GPS 轮询",
+          "gps_active_interval": "GPS 活动间隔（秒）",
+          "gps_inactive_interval": "GPS 非活动间隔（秒）",
+          "control_pin": "操作密码",
+          "debug_dumps": "调试转储API响应"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到比亚迪服务器，请检查网络连接",
+      "invalid_auth": "手机号或密码错误",
+      "account_locked": "账号已被锁定，请稍后重试或联系比亚迪客服",
+      "decryption_error": "服务器响应解密失败，集成可能需要更新",
+      "invalid_pin_format": "控制PIN码必须为4-6位数字",
+      "unknown": "意外错误"
+    },
+    "abort": {
+      "already_configured": "该帐户已配置",
+      "wrong_account": "该帐户与正在重新验证的帐户不匹配",
+      "reauth_successful": "重新认证成功"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "更新轮询",
+        "data": {
+          "poll_interval": "轮询间隔（秒）",
+          "gps_poll_interval": "GPS 轮询间隔（秒）",
+          "smart_gps_polling": "智能 GPS 轮询",
+          "gps_active_interval": "GPS 活动间隔（秒）",
+          "gps_inactive_interval": "GPS 非活动间隔（秒）",
+          "climate_duration": "空调持续时间 (time_span)",
+          "debug_dumps": "调试转储API响应"
+        }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "door_unlock": { "name": "车门解锁" },
+      "door_lock": { "name": "车门上锁" },
+      "open_trunk": { "name": "打开后备箱" },
+      "window_close": { "name": "关闭车窗" },
+      "find_car": { "name": "寻车" },
+      "flash_lights": { "name": "闪灯" },
+      "stop_engine": { "name": "一键熄火" }
+    },
+    "climate": {
+      "byd_climate": { "name": "空调" }
+    },
+    "number": {
+      "realtime_poll_interval": { "name": "遥测轮询间隔" },
+      "gps_poll_interval": { "name": "GPS 轮询间隔" }
+    },
+    "sensor": {
+      "vin": { "name": "车辆识别码" },
+      "channel": { "name": "品牌" },
+      "c_car_type": { "name": "车型" },
+      "auto_plate": { "name": "车牌号" },
+      "auto_out_color": { "name": "外观颜色" },
+      "vehicle_image": { "name": "车辆图片" },
+      "power_battery": { "name": "动力电池状态" },
+      "charging_system": { "name": "充电系统" },
+      "srs": { "name": "安全气囊系统" },
+      "esp": { "name": "车身稳定系统" },
+      "braking_system": { "name": "制动系统" },
+      "abs_warning": { "name": "防抱死系统" },
+      "steering_system": { "name": "转向系统" },
+      "power_system": { "name": "动力系统状态" },
+      "oil_pressure_system": { "name": "机油压力系统" },
+      "engine_status": { "name": "发动机状态" },
+      "ect": { "name": "变速箱油温状态" },
+      "tirepressure_system": { "name": "胎压系统" },
+      "small_ui_smart_charge_tips": { "name": "充电状态" },
+      "charging_power": { "name": "充电功率" },
+      "remaining_hours": { "name": "剩余小时数" },
+      "remaining_minutes": { "name": "剩余分钟数" },
+      "elec_percent": { "name": "剩余电量" },
+      "ev_endurance": { "name": "纯电续航" },
+      "oil_percent": { "name": "剩余燃油" },
+      "oil_endurance": { "name": "燃油续航" },
+      "hev_mileage": { "name": "混动里程" },
+      "total_mileage": { "name": "总里程" },
+      "recent_50km_avg_consumption_combined": { "name": "最近50km平均能耗 - 综合" },
+      "recent_50km_avg_consumption_electric": { "name": "最近50km平均能耗 - 电耗" },
+      "recent_50km_avg_consumption_fuel": { "name": "最近50km平均能耗 - 油耗" },
+      "cumulative_avg_consumption_combined": { "name": "累计平均能耗 - 综合" },
+      "cumulative_avg_consumption_fuel": { "name": "累计平均能耗 - 油耗" },
+      "cumulative_avg_consumption_electric": { "name": "累计平均能耗 - 电耗" },
+      "left_front_tire_pressure": { "name": "左前胎压" },
+      "right_front_tire_pressure": { "name": "右前胎压" },
+      "left_rear_tire_pressure": { "name": "左后胎压" },
+      "right_rear_tire_pressure": { "name": "右后胎压" },
+      "gps_latitude": { "name": "纬度" },
+      "gps_longitude": { "name": "经度" },
+      "account_type": { "name": "账号类型" },
+      "last_updated": { "name": "最后更新" },
+      "gps_last_updated": { "name": "GPS 最后更新" },
+      "left_front_door": { "name": "左前车门" },
+      "right_front_door": { "name": "右前车门" },
+      "left_rear_door": { "name": "左后车门" },
+      "right_rear_door": { "name": "右后车门" },
+      "trunk_lid": { "name": "后备箱" },
+      "left_front_door_lock": { "name": "左前门锁" },
+      "right_front_door_lock": { "name": "右前门锁" },
+      "left_rear_door_lock": { "name": "左后门锁" },
+      "right_rear_door_lock": { "name": "右后门锁" },
+      "left_front_window": { "name": "左前车窗" },
+      "right_front_window": { "name": "右前车窗" },
+      "right_rear_window": { "name": "右后车窗" },
+      "left_rear_window": { "name": "左后车窗" },
+      "skylight": { "name": "天窗" },
+      "left_front_tire_status": { "name": "左前轮胎状态" },
+      "right_front_tire_status": { "name": "右前轮胎状态" },
+      "left_rear_tire_status": { "name": "左后轮胎状态" },
+      "right_rear_tire_status": { "name": "右后轮胎状态" },
+      "speed": { "name": "车速" },
+      "power_gear": { "name": "档位" }
+    },
+    "binary_sensor": {},
+    "device_tracker": {
+      "location": { "name": "地点" }
+    }
+  },
+  "services": {
+    "fetch_realtime": {
+      "name": "Fetch telemetry data",
+      "description": "Force-fetch the latest vehicle telemetry from the BYD cloud.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The BYD vehicle device to fetch data for."
+        }
+      }
+    },
+    "fetch_gps": {
+      "name": "Fetch GPS data",
+      "description": "Force-fetch the latest GPS location from the BYD cloud.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The BYD vehicle device to fetch data for."
+        }
+      }
+    }
+  }
+}

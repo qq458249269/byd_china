@@ -1,0 +1,15 @@
+fetch_realtime:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: byd_china
+
+fetch_gps:
+  fields:
+    device_id:
+      required: true
+      selector:
+        device:
+          integration: byd_china

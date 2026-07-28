@@ -1,0 +1,160 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to BYD (China)",
+        "description": "Set up your BYD account.",
+        "data": {
+          "username": "Phone number",
+          "password": "Password",
+          "target_brand": "Brand",
+          "poll_interval": "Poll interval (seconds)",
+          "gps_poll_interval": "GPS poll interval (seconds)",
+          "smart_gps_polling": "Smart GPS polling",
+          "gps_active_interval": "GPS active interval (seconds)",
+          "gps_inactive_interval": "GPS inactive interval (seconds)",
+          "control_pin": "操作密码",
+          "debug_dumps": "Debug dump API responses"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to BYD server. Check your network connection.",
+      "invalid_auth": "Invalid phone number or password",
+      "account_locked": "Account is locked. Please try again later or contact BYD support.",
+      "decryption_error": "Server response decryption failed. The integration may need updating.",
+      "invalid_pin_format": "Control PIN must be a 4-6 digit number",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "wrong_account": "The account does not match the one being reauthenticated",
+      "reauth_successful": "Reauthentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Update polling",
+        "data": {
+          "poll_interval": "Poll interval (seconds)",
+          "gps_poll_interval": "GPS poll interval (seconds)",
+          "smart_gps_polling": "Smart GPS polling",
+          "gps_active_interval": "GPS active interval (seconds)",
+          "gps_inactive_interval": "GPS inactive interval (seconds)",
+          "climate_duration": "Climate duration (time_span)",
+          "debug_dumps": "Debug dump API responses"
+        }
+      }
+    }
+  },
+  "entity": {
+    "button": {
+      "door_unlock": { "name": "Door unlock" },
+      "door_lock": { "name": "Door lock" },
+      "open_trunk": { "name": "Open trunk" },
+      "window_close": { "name": "Close windows" },
+      "find_car": { "name": "Find car" },
+      "flash_lights": { "name": "Flash lights" },
+      "stop_engine": { "name": "Stop engine" }
+    },
+    "climate": {
+      "byd_climate": { "name": "A/C" }
+    },
+    "number": {
+      "realtime_poll_interval": { "name": "Telemetry poll interval" },
+      "gps_poll_interval": { "name": "GPS poll interval" }
+    },
+    "sensor": {
+      "vin": { "name": "VIN" },
+      "channel": { "name": "Brand channel" },
+      "c_car_type": { "name": "Car type" },
+      "auto_plate": { "name": "License plate" },
+      "auto_out_color": { "name": "Exterior color" },
+      "vehicle_image": { "name": "Vehicle image" },
+      "power_battery": { "name": "Power battery status" },
+      "charging_system": { "name": "Charging system" },
+      "srs": { "name": "SRS" },
+      "esp": { "name": "ESP" },
+      "braking_system": { "name": "Braking system" },
+      "abs_warning": { "name": "ABS warning" },
+      "steering_system": { "name": "Steering system" },
+      "power_system": { "name": "Power system" },
+      "oil_pressure_system": { "name": "Oil pressure system" },
+      "engine_status": { "name": "Engine status" },
+      "ect": { "name": "ECT" },
+      "tirepressure_system": { "name": "Tire pressure system" },
+      "small_ui_smart_charge_tips": { "name": "Charging state" },
+      "charging_power": { "name": "Charging power" },
+      "remaining_hours": { "name": "Charge remaining hours" },
+      "remaining_minutes": { "name": "Charge remaining minutes" },
+      "elec_percent": { "name": "Battery level" },
+      "ev_endurance": { "name": "EV range" },
+      "oil_percent": { "name": "Fuel level" },
+      "oil_endurance": { "name": "Fuel range" },
+      "hev_mileage": { "name": "HEV mileage" },
+      "total_mileage": { "name": "Odometer" },
+      "recent_50km_avg_consumption_combined": { "name": "Recent 50km avg consumption - combined" },
+      "recent_50km_avg_consumption_electric": { "name": "Recent 50km avg consumption - electric" },
+      "recent_50km_avg_consumption_fuel": { "name": "Recent 50km avg consumption - fuel" },
+      "cumulative_avg_consumption_combined": { "name": "Cumulative avg consumption - combined" },
+      "cumulative_avg_consumption_fuel": { "name": "Cumulative avg consumption - fuel" },
+      "cumulative_avg_consumption_electric": { "name": "Cumulative avg consumption - electric" },
+      "left_front_tire_pressure": { "name": "Front left tire pressure" },
+      "right_front_tire_pressure": { "name": "Front right tire pressure" },
+      "left_rear_tire_pressure": { "name": "Rear left tire pressure" },
+      "right_rear_tire_pressure": { "name": "Rear right tire pressure" },
+      "gps_latitude": { "name": "GPS latitude" },
+      "gps_longitude": { "name": "GPS longitude" },
+      "account_type": { "name": "Account type" },
+      "last_updated": { "name": "Last updated" },
+      "gps_last_updated": { "name": "GPS last updated" },
+      "left_front_door": { "name": "Front left door" },
+      "right_front_door": { "name": "Front right door" },
+      "left_rear_door": { "name": "Rear left door" },
+      "right_rear_door": { "name": "Rear right door" },
+      "trunk_lid": { "name": "Trunk" },
+      "left_front_door_lock": { "name": "Front left door lock" },
+      "right_front_door_lock": { "name": "Front right door lock" },
+      "left_rear_door_lock": { "name": "Rear left door lock" },
+      "right_rear_door_lock": { "name": "Rear right door lock" },
+      "left_front_window": { "name": "Front left window" },
+      "right_front_window": { "name": "Front right window" },
+      "right_rear_window": { "name": "Rear right window" },
+      "left_rear_window": { "name": "Rear left window" },
+      "skylight": { "name": "Skylight" },
+      "left_front_tire_status": { "name": "Front left tire status" },
+      "right_front_tire_status": { "name": "Front right tire status" },
+      "left_rear_tire_status": { "name": "Rear left tire status" },
+      "right_rear_tire_status": { "name": "Rear right tire status" },
+      "speed": { "name": "Speed" },
+      "power_gear": { "name": "Power gear" }
+    },
+    "binary_sensor": {},
+    "device_tracker": {
+      "location": { "name": "Location" }
+    }
+  },
+  "services": {
+    "fetch_realtime": {
+      "name": "Fetch telemetry data",
+      "description": "Force-fetch the latest vehicle telemetry from the BYD cloud.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The BYD vehicle device to fetch data for."
+        }
+      }
+    },
+    "fetch_gps": {
+      "name": "Fetch GPS data",
+      "description": "Force-fetch the latest GPS location from the BYD cloud.",
+      "fields": {
+        "device_id": {
+          "name": "Device",
+          "description": "The BYD vehicle device to fetch data for."
+        }
+      }
+    }
+  }
+}

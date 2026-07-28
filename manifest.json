@@ -1,0 +1,10 @@
+{
+  "domain": "byd_china",
+  "name": "BYD China",
+  "codeowners": [],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "1.0.0",
+  "icon": "mdi:car-electric"
+}
