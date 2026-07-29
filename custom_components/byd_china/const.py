@@ -26,8 +26,8 @@ CONF_TARGET_BRAND = "target_brand"
 CONF_APP_CHANNEL = "app_channel"
 CONF_CONTROL_PIN = "control_pin"
 
-DEFAULT_POLL_INTERVAL = 300
-DEFAULT_GPS_POLL_INTERVAL = 300
+DEFAULT_POLL_INTERVAL = 21600  # seconds = 6 hours
+DEFAULT_GPS_POLL_INTERVAL = 21600  # seconds = 6 hours
 DEFAULT_DEBUG_DUMPS = False
 DEFAULT_COUNTRY = "China"
 DEFAULT_LANGUAGE = "zh-Hans"
@@ -36,10 +36,10 @@ DEFAULT_BASE_URL = "https://dilinksuperappserver-cn.byd.auto"
 DEFAULT_TARGET_BRAND = "1"
 DEFAULT_APP_CHANNEL = "99"
 
-MIN_POLL_INTERVAL = 30
-MAX_POLL_INTERVAL = 3600
-MIN_GPS_POLL_INTERVAL = 30
-MAX_GPS_POLL_INTERVAL = 3600
+MIN_POLL_INTERVAL = 1800  # seconds = 0.5 hour
+MAX_POLL_INTERVAL = 2592000  # seconds = 720 hours (30 days)
+MIN_GPS_POLL_INTERVAL = 1800  # seconds = 0.5 hour
+MAX_GPS_POLL_INTERVAL = 2592000  # seconds = 720 hours (30 days)
 
 # China-only node
 NODE_METADATA: dict[int, dict[str, str]] = {

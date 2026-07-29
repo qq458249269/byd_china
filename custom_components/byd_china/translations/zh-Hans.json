@@ -62,8 +62,8 @@
       "byd_climate": { "name": "空调" }
     },
     "number": {
-      "realtime_poll_interval": { "name": "遥测轮询间隔" },
-      "gps_poll_interval": { "name": "GPS 轮询间隔" }
+      "realtime_poll_interval": { "name": "遥测轮询间隔（小时）" },
+      "gps_poll_interval": { "name": "GPS 轮询间隔（小时）" }
     },
     "sensor": {
       "vin": { "name": "车辆识别码" },

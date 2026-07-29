@@ -27,6 +27,14 @@ from .entity import BydVehicleEntity
 _LOGGER = logging.getLogger(__name__)
 
 
+def _hours_to_sec(h: float) -> int:
+    return max(1, int(h * 3600))
+
+
+def _sec_to_hours(s: int) -> float:
+    return round(s / 3600, 1)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -62,17 +70,22 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class BydRealtimePollIntervalNumber(BydVehicleEntity, NumberEntity):
-    """Runtime-configurable realtime polling interval."""
+class BydPollIntervalNumberMixin:
+    """Mixin for hour-based poll interval number entities."""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "realtime_poll_interval"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_min_value = float(MIN_POLL_INTERVAL)
-    _attr_native_max_value = float(MAX_POLL_INTERVAL)
-    _attr_native_step = 1.0
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
     _attr_mode = NumberMode.BOX
+
+
+class BydRealtimePollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, NumberEntity):
+    """Runtime-configurable realtime polling interval (hours)."""
+
+    _attr_translation_key = "realtime_poll_interval"
+    _attr_native_min_value = MIN_POLL_INTERVAL / 3600
+    _attr_native_max_value = MAX_POLL_INTERVAL / 3600
+    _attr_native_step = 0.5
 
     def __init__(
         self,
@@ -91,12 +104,13 @@ class BydRealtimePollIntervalNumber(BydVehicleEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Return realtime poll interval in seconds."""
-        return float(self.coordinator.poll_interval_seconds)
+        """Return poll interval in hours."""
+        return _sec_to_hours(self.coordinator.poll_interval_seconds)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Set and persist realtime poll interval."""
-        interval = max(MIN_POLL_INTERVAL, min(MAX_POLL_INTERVAL, int(value)))
+        """Set and persist poll interval."""
+        interval = _hours_to_sec(value)
+        interval = max(MIN_POLL_INTERVAL, min(MAX_POLL_INTERVAL, interval))
 
         entry_data = self.hass.data[DOMAIN][self._entry.entry_id]
         for coordinator in entry_data["coordinators"].values():
@@ -108,17 +122,13 @@ class BydRealtimePollIntervalNumber(BydVehicleEntity, NumberEntity):
         self.async_write_ha_state()
 
 
-class BydGpsPollIntervalNumber(BydVehicleEntity, NumberEntity):
-    """Runtime-configurable GPS polling interval."""
+class BydGpsPollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, NumberEntity):
+    """Runtime-configurable GPS polling interval (hours)."""
 
-    _attr_has_entity_name = True
     _attr_translation_key = "gps_poll_interval"
-    _attr_entity_category = EntityCategory.CONFIG
-    _attr_native_min_value = float(MIN_GPS_POLL_INTERVAL)
-    _attr_native_max_value = float(MAX_GPS_POLL_INTERVAL)
-    _attr_native_step = 1.0
-    _attr_native_unit_of_measurement = UnitOfTime.SECONDS
-    _attr_mode = NumberMode.BOX
+    _attr_native_min_value = MIN_GPS_POLL_INTERVAL / 3600
+    _attr_native_max_value = MAX_GPS_POLL_INTERVAL / 3600
+    _attr_native_step = 0.5
 
     def __init__(
         self,
@@ -139,12 +149,13 @@ class BydGpsPollIntervalNumber(BydVehicleEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        """Return GPS poll interval in seconds."""
-        return float(self._gps_coordinator.poll_interval_seconds)
+        """Return GPS poll interval in hours."""
+        return _sec_to_hours(self._gps_coordinator.poll_interval_seconds)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set and persist GPS poll interval."""
-        interval = max(MIN_GPS_POLL_INTERVAL, min(MAX_GPS_POLL_INTERVAL, int(value)))
+        interval = _hours_to_sec(value)
+        interval = max(MIN_GPS_POLL_INTERVAL, min(MAX_GPS_POLL_INTERVAL, interval))
 
         entry_data = self.hass.data[DOMAIN][self._entry.entry_id]
         for gps_coordinator in entry_data["gps_coordinators"].values():
