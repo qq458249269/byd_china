@@ -522,7 +522,8 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
         except _AUTH_ERRORS:
             raise
         except _RECOVERABLE_ERRORS as exc:
-            raise UpdateFailed(str(exc)) from exc
+            _LOGGER.warning("Telemetry fetch failed (keeping stale data): vin=%s, error=%s", self._vin[-6:], exc)
+            return self.data
 
     # Polling control
     @property
