@@ -50,20 +50,24 @@
   },
   "entity": {
     "button": {
+      "ac_on": { "name": "开启空调" },
+      "ac_off": { "name": "关闭空调" },
       "door_unlock": { "name": "车门解锁" },
       "door_lock": { "name": "车门上锁" },
       "open_trunk": { "name": "打开后备箱" },
       "window_close": { "name": "关闭车窗" },
       "find_car": { "name": "寻车" },
-      "flash_lights": { "name": "闪灯" },
-      "stop_engine": { "name": "一键熄火" }
+      "flash_lights": { "name": "闪灯" }
     },
     "climate": {
-      "byd_climate": { "name": "空调" }
+      "byd_climate": { "name": "空调控制" }
     },
     "number": {
       "realtime_poll_interval": { "name": "遥测轮询间隔（小时）" },
       "gps_poll_interval": { "name": "GPS 轮询间隔（小时）" }
+    },
+    "lock": {
+      "vehicle_lock": { "name": "门锁" }
     },
     "sensor": {
       "vin": { "name": "车辆识别码" },

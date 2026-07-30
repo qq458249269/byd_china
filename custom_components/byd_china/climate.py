@@ -100,6 +100,8 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         | ClimateEntityFeature.PRESET_MODE
         | ClimateEntityFeature.FAN_MODE
         | ClimateEntityFeature.SWING_MODE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
     )
 
     def __init__(

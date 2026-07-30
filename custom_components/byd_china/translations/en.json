@@ -50,20 +50,24 @@
   },
   "entity": {
     "button": {
+      "ac_on": { "name": "Turn on A/C" },
+      "ac_off": { "name": "Turn off A/C" },
       "door_unlock": { "name": "Door unlock" },
       "door_lock": { "name": "Door lock" },
       "open_trunk": { "name": "Open trunk" },
       "window_close": { "name": "Close windows" },
       "find_car": { "name": "Find car" },
-      "flash_lights": { "name": "Flash lights" },
-      "stop_engine": { "name": "Stop engine" }
+      "flash_lights": { "name": "Flash lights" }
     },
     "climate": {
-      "byd_climate": { "name": "A/C" }
+      "byd_climate": { "name": "Climate control" }
     },
     "number": {
       "realtime_poll_interval": { "name": "Telemetry poll interval (hours)" },
       "gps_poll_interval": { "name": "GPS poll interval (hours)" }
+    },
+    "lock": {
+      "vehicle_lock": { "name": "Door locks" }
     },
     "sensor": {
       "vin": { "name": "VIN" },

@@ -496,12 +496,12 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             auto_type = self._vehicle.out_model_type or "1"
             try:
                 historical_raw = await client.get_historical_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
-                _LOGGER.warning("Historical energy data: %s", historical_raw)
+                _LOGGER.debug("Historical energy data: %s", historical_raw)
             except Exception as exc:
                 _LOGGER.warning("get_historical_data_by_vin failed: %s", exc)
             try:
                 recent_raw = await client.get_recent_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
-                _LOGGER.warning("Recent energy data: %s", recent_raw)
+                _LOGGER.debug("Recent energy data: %s", recent_raw)
             except Exception as exc:
                 _LOGGER.warning("get_recent_data_by_vin failed: %s", exc)
 
