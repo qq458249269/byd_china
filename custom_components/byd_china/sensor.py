@@ -15,7 +15,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .pybyd_china.models.gps import GpsInfo
@@ -201,100 +201,6 @@ def _power_gear_text(obj: Any) -> str | None:
     return f"P{v}"
 
 
-# Generic enum -> friendly text mapper (enum instances expose ``.value``).
-def _map_text(attr: str, mapping: dict[int, str]) -> Callable[[Any], str | None]:
-    def _fn(obj: Any) -> str | None:
-        val = getattr(obj, attr, None)
-        if val is None:
-            return None
-        raw = getattr(val, "value", val)
-        if raw is None:
-            return None
-        return mapping.get(int(raw))
-    return _fn
-
-
-# 0/1 indicator -> "关闭"/"开启", <0 -> "未知"
-def _on_off_text(attr: str) -> Callable[[Any], str | None]:
-    def _fn(obj: Any) -> str | None:
-        val = getattr(obj, attr, None)
-        if val is None:
-            return None
-        raw = getattr(val, "value", val)
-        if raw is None:
-            return None
-        try:
-            v = int(raw)
-        except (TypeError, ValueError):
-            return None
-        if v < 0:
-            return "未知"
-        return "开启" if v > 0 else "关闭"
-    return _fn
-
-
-# Numeric field -> float (normalizes enum/str sentinels).
-def _raw_float(attr: str) -> Callable[[Any], float | None]:
-    def _fn(obj: Any) -> float | None:
-        val = getattr(obj, attr, None)
-        if val is None:
-            return None
-        raw = getattr(val, "value", val)
-        if raw is None:
-            return None
-        try:
-            return float(raw)
-        except (TypeError, ValueError):
-            return None
-    return _fn
-
-
-# Fan position: 0 -> "自动", 1..7 -> "N 档", <0 -> "未知"
-def _wind_position_text(attr: str) -> Callable[[Any], str | None]:
-    def _fn(obj: Any) -> str | None:
-        val = getattr(obj, attr, None)
-        if val is None:
-            return None
-        raw = getattr(val, "value", val)
-        if raw is None:
-            return None
-        try:
-            v = int(raw)
-        except (TypeError, ValueError):
-            return None
-        if v < 0:
-            return "未知"
-        if v == 0:
-            return "自动"
-        return f"{v} 档"
-    return _fn
-
-
-# HVAC time choice: 1-5 -> "10分钟".."30分钟"
-def _time_choice_text(obj: Any) -> str | None:
-    val = getattr(obj, "time_choice", None)
-    if val is None:
-        return None
-    raw = getattr(val, "value", val)
-    if raw is None:
-        return None
-    mapping = {1: "10分钟", 2: "15分钟", 3: "20分钟", 4: "25分钟", 5: "30分钟"}
-    return mapping.get(int(raw))
-
-
-# ---- enum value -> text maps -------------------------------------------------
-_ONLINE_TEXT = {-1: "未知", 1: "在线", 2: "离线"}
-_CONNECT_TEXT = {-1: "未知", 0: "未连接", 1: "已连接"}
-_VEHICLE_STATE_TEXT = {-1: "未知", 0: "熄火", 2: "启动"}
-_CHARGING_TEXT = {-1: "未知", 0: "未充电", 1: "充电中", 15: "已连接"}
-_SEAT_TEXT = {-1: "未知", 0: "无数据", 1: "关闭", 2: "低", 3: "高"}
-_TIRE_UNIT_TEXT = {-1: "未知", 1: "BAR", 2: "PSI", 3: "KPa"}
-_HVAC_STATUS_TEXT = {-1: "未知", 1: "开启", 2: "关闭"}
-_AC_MODE_TEXT = {-1: "未知", 0: "关闭", 1: "自动", 2: "手动"}
-_WIND_MODE_TEXT = {-1: "未知", 0: "关闭", 1: "吹面", 2: "吹面吹脚", 3: "吹脚", 4: "吹脚除霜", 5: "除霜"}
-_CYCLE_TEXT = {-1: "未知", 1: "外循环", 2: "内循环"}
-
-
 # =============================================
 # SENSOR DESCRIPTIONS - strictly ordered per user spec
 # =============================================
@@ -307,10 +213,6 @@ SENSOR_DESCRIPTIONS: tuple[BydSensorDescription, ...] = (
     BydSensorDescription(key="auto_out_color", source="realtime", icon="mdi:palette"),
     BydSensorDescription(key="vehicle_image", source="realtime", icon="mdi:image"),
     BydSensorDescription(key="channel", source="realtime", icon="mdi:tag"),
-    # --- 连接/电源状态 ---
-    BydSensorDescription(key="online_state", source="realtime", icon="mdi:cloud-check", value_fn=_map_text("online_state", _ONLINE_TEXT)),
-    BydSensorDescription(key="connect_state", source="realtime", icon="mdi:connection", value_fn=_map_text("connect_state", _CONNECT_TEXT)),
-    BydSensorDescription(key="vehicle_state", source="realtime", icon="mdi:power", value_fn=_map_text("vehicle_state", _VEHICLE_STATE_TEXT)),
     # --- 系统状态 (0=正常, >0=异常) ---
     BydSensorDescription(key="power_battery", source="realtime", icon="mdi:battery-outline", value_fn=_status_text("power_battery")),
     BydSensorDescription(key="charging_system", source="realtime", icon="mdi:ev-station", value_fn=_status_text("charging_system")),
@@ -323,13 +225,6 @@ SENSOR_DESCRIPTIONS: tuple[BydSensorDescription, ...] = (
     BydSensorDescription(key="oil_pressure_system", source="realtime", icon="mdi:oil", value_fn=_status_text("oil_pressure_system")),
     BydSensorDescription(key="engine_status", source="realtime", icon="mdi:engine", value_fn=_status_text("engine_status")),
     BydSensorDescription(key="ect", source="realtime", icon="mdi:coolant-temperature", value_fn=_status_text("ect")),
-    BydSensorDescription(key="ect_value", source="realtime", icon="mdi:coolant-temperature", device_class=SensorDeviceClass.TEMPERATURE, native_unit_of_measurement=UnitOfTemperature.CELSIUS, suggested_display_precision=0, value_fn=_raw_float("ect_value")),
-    BydSensorDescription(key="svs", source="realtime", icon="mdi:alert", value_fn=_status_text("svs")),
-    BydSensorDescription(key="eps", source="realtime", icon="mdi:steering", value_fn=_status_text("eps")),
-    BydSensorDescription(key="epb", source="realtime", icon="mdi:car-brake-parking", value_fn=_on_off_text("epb")),
-    BydSensorDescription(key="pwr", source="realtime", icon="mdi:flash", value_fn=_status_text("pwr")),
-    BydSensorDescription(key="rapid_tire_leak", source="realtime", icon="mdi:car-tire-alert", value_fn=_on_off_text("rapid_tire_leak")),
-    BydSensorDescription(key="ok_light", source="realtime", icon="mdi:led-on", value_fn=_on_off_text("ok_light")),
     BydSensorDescription(key="tirepressure_system", source="realtime", icon="mdi:car-tire-alert", value_fn=_status_text("tirepressure_system")),
     # --- 车门 (0=关闭, 1=打开) ---
     BydSensorDescription(key="left_front_door", source="realtime", icon="mdi:car-door", value_fn=_door_text("left_front_door")),
@@ -337,14 +232,11 @@ SENSOR_DESCRIPTIONS: tuple[BydSensorDescription, ...] = (
     BydSensorDescription(key="left_rear_door", source="realtime", icon="mdi:car-door", value_fn=_door_text("left_rear_door")),
     BydSensorDescription(key="right_rear_door", source="realtime", icon="mdi:car-door", value_fn=_door_text("right_rear_door")),
     BydSensorDescription(key="trunk_lid", source="realtime", icon="mdi:car-back", value_fn=_door_text("trunk_lid")),
-    BydSensorDescription(key="sliding_door", source="realtime", icon="mdi:car-door", value_fn=_door_text("sliding_door")),
-    BydSensorDescription(key="forehold", source="realtime", icon="mdi:car-side", value_fn=_door_text("forehold")),
     # --- 门锁 (1=已解锁, 2=已锁定) ---
     BydSensorDescription(key="left_front_door_lock", source="realtime", icon="mdi:lock", value_fn=_lock_text("left_front_door_lock")),
     BydSensorDescription(key="right_front_door_lock", source="realtime", icon="mdi:lock", value_fn=_lock_text("right_front_door_lock")),
     BydSensorDescription(key="left_rear_door_lock", source="realtime", icon="mdi:lock", value_fn=_lock_text("left_rear_door_lock")),
     BydSensorDescription(key="right_rear_door_lock", source="realtime", icon="mdi:lock", value_fn=_lock_text("right_rear_door_lock")),
-    BydSensorDescription(key="sliding_door_lock", source="realtime", icon="mdi:lock", value_fn=_lock_text("sliding_door_lock")),
     # --- 车窗 (1=关闭, 2=打开, -1=未配备) ---
     BydSensorDescription(key="left_front_window", source="realtime", icon="mdi:car-door", value_fn=_window_text("left_front_window")),
     BydSensorDescription(key="right_front_window", source="realtime", icon="mdi:car-door", value_fn=_window_text("right_front_window")),
@@ -361,18 +253,7 @@ SENSOR_DESCRIPTIONS: tuple[BydSensorDescription, ...] = (
     BydSensorDescription(key="right_front_tire_pressure", source="realtime", icon="mdi:car-tire-alert", native_unit_of_measurement=UnitOfPressure.KPA, suggested_display_precision=0),
     BydSensorDescription(key="left_rear_tire_pressure", source="realtime", icon="mdi:car-tire-alert", native_unit_of_measurement=UnitOfPressure.KPA, suggested_display_precision=0),
     BydSensorDescription(key="right_rear_tire_pressure", source="realtime", icon="mdi:car-tire-alert", native_unit_of_measurement=UnitOfPressure.KPA, suggested_display_precision=0),
-    BydSensorDescription(key="tire_press_unit", source="realtime", icon="mdi:car-tire-alert", value_fn=_map_text("tire_press_unit", _TIRE_UNIT_TEXT)),
     # --- 充电 ---
-    BydSensorDescription(key="charging_state", source="realtime", icon="mdi:ev-station", value_fn=_map_text("charging_state", _CHARGING_TEXT)),
-    BydSensorDescription(key="charge_state", source="realtime", icon="mdi:ev-station", value_fn=_map_text("charge_state", _CHARGING_TEXT)),
-    BydSensorDescription(key="wait_status", source="realtime", icon="mdi:clock-outline", value_fn=_raw_float("wait_status")),
-    BydSensorDescription(key="full_hour", source="realtime", icon="mdi:clock-outline", value_fn=_raw_float("full_hour")),
-    BydSensorDescription(key="full_minute", source="realtime", icon="mdi:clock-outline", value_fn=_raw_float("full_minute")),
-    BydSensorDescription(key="booking_charge_state", source="realtime", icon="mdi:calendar-clock", value_fn=_on_off_text("booking_charge_state")),
-    BydSensorDescription(key="booking_charging_hour", source="realtime", icon="mdi:clock-outline", value_fn=_raw_float("booking_charging_hour")),
-    BydSensorDescription(key="booking_charging_minute", source="realtime", icon="mdi:clock-outline", value_fn=_raw_float("booking_charging_minute")),
-    BydSensorDescription(key="rate", source="realtime", icon="mdi:flash", value_fn=_raw_float("rate")),
-    BydSensorDescription(key="less_one_min", source="realtime", icon="mdi:clock-check-outline", value_fn=_on_off_text("less_one_min")),
     BydSensorDescription(key="small_ui_smart_charge_tips", source="realtime", icon="mdi:ev-station"),
     BydSensorDescription(key="charging_power", source="realtime", icon="mdi:flash"),
     BydSensorDescription(key="remaining_hours", source="realtime", icon="mdi:clock-outline"),
@@ -382,36 +263,8 @@ SENSOR_DESCRIPTIONS: tuple[BydSensorDescription, ...] = (
     BydSensorDescription(key="ev_endurance", source="realtime", icon="mdi:road-variant", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
     BydSensorDescription(key="oil_percent", source="realtime", icon="mdi:gas-station", native_unit_of_measurement=PERCENTAGE, suggested_display_precision=0),
     BydSensorDescription(key="oil_endurance", source="realtime", icon="mdi:gas-station", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
-    BydSensorDescription(key="endurance_mileage", source="realtime", icon="mdi:road-variant", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
-    BydSensorDescription(key="total_mileage_v2", source="realtime", icon="mdi:counter", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
-    BydSensorDescription(key="total_oil", source="realtime", icon="mdi:gas-station", native_unit_of_measurement="L", suggested_display_precision=1),
     BydSensorDescription(key="hev_mileage", source="realtime", icon="mdi:counter", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
     BydSensorDescription(key="total_mileage", source="realtime", icon="mdi:counter", native_unit_of_measurement=UnitOfLength.KILOMETERS, suggested_display_precision=0),
-    # --- 能耗 (实时/字符串字段) ---
-    BydSensorDescription(key="total_power", source="realtime", icon="mdi:flash", native_unit_of_measurement="W", suggested_display_precision=0),
-    BydSensorDescription(key="gl", source="realtime", icon="mdi:flash", native_unit_of_measurement="W", suggested_display_precision=0),
-    BydSensorDescription(key="nearest_energy_consumption", source="realtime", icon="mdi:lightning-bolt"),
-    BydSensorDescription(key="total_consumption_en", source="realtime", icon="mdi:lightning-bolt"),
-    BydSensorDescription(key="recent_50km_energy", source="realtime", icon="mdi:lightning-bolt"),
-    BydSensorDescription(key="energy_consumption", source="realtime", icon="mdi:lightning-bolt"),
-    # --- 空调 (HVAC) 状态 ---
-    BydSensorDescription(key="hvac_status", source="hvac", icon="mdi:air-conditioner", value_fn=_map_text("status", _HVAC_STATUS_TEXT)),
-    BydSensorDescription(key="air_conditioning_mode", source="hvac", icon="mdi:air-conditioner", value_fn=_map_text("air_conditioning_mode", _AC_MODE_TEXT)),
-    BydSensorDescription(key="hvac_wind_mode", source="hvac", icon="mdi:fan", value_fn=_map_text("wind_mode", _WIND_MODE_TEXT)),
-    BydSensorDescription(key="hvac_wind_position", source="hvac", icon="mdi:fan", value_fn=_wind_position_text("wind_position")),
-    BydSensorDescription(key="cycle_choice", source="hvac", icon="mdi:sync", value_fn=_map_text("cycle_choice", _CYCLE_TEXT)),
-    BydSensorDescription(key="time_choice", source="hvac", icon="mdi:clock-outline", value_fn=_time_choice_text),
-    BydSensorDescription(key="delay_off_time", source="hvac", icon="mdi:clock-outline", value_fn=_raw_float("delay_off_time")),
-    BydSensorDescription(key="temp_in_car", source="hvac", icon="mdi:thermometer", device_class=SensorDeviceClass.TEMPERATURE, native_unit_of_measurement=UnitOfTemperature.CELSIUS, suggested_display_precision=1),
-    BydSensorDescription(key="temp_out_car", source="hvac", icon="mdi:thermometer", device_class=SensorDeviceClass.TEMPERATURE, native_unit_of_measurement=UnitOfTemperature.CELSIUS, suggested_display_precision=1),
-    BydSensorDescription(key="front_defrost_status", source="hvac", icon="mdi:car-windshield", value_fn=_on_off_text("front_defrost_status")),
-    BydSensorDescription(key="electric_defrost_status", source="hvac", icon="mdi:car-windshield", value_fn=_on_off_text("electric_defrost_status")),
-    BydSensorDescription(key="main_seat_heat_state", source="hvac", icon="mdi:seat", value_fn=_map_text("main_seat_heat_state", _SEAT_TEXT)),
-    BydSensorDescription(key="copilot_seat_heat_state", source="hvac", icon="mdi:seat", value_fn=_map_text("copilot_seat_heat_state", _SEAT_TEXT)),
-    BydSensorDescription(key="main_seat_ventilation_state", source="hvac", icon="mdi:fan", value_fn=_map_text("main_seat_ventilation_state", _SEAT_TEXT)),
-    BydSensorDescription(key="copilot_seat_ventilation_state", source="hvac", icon="mdi:fan", value_fn=_map_text("copilot_seat_ventilation_state", _SEAT_TEXT)),
-    BydSensorDescription(key="steering_wheel_heat_state", source="hvac", icon="mdi:steering", value_fn=_map_text("steering_wheel_heat_state", {-1: "开启", 1: "关闭"})),
-    BydSensorDescription(key="pm", source="hvac", icon="mdi:air-filter", suggested_display_precision=0),
     # --- 能耗 ---
     BydSensorDescription(key="recent_50km_avg_consumption_combined", source="recent_energy", icon="mdi:lightning-bolt", native_unit_of_measurement="L", suggested_display_precision=1),
     BydSensorDescription(key="recent_50km_avg_consumption_electric", source="recent_energy", icon="mdi:ev-station", native_unit_of_measurement="kWh", suggested_display_precision=1),
