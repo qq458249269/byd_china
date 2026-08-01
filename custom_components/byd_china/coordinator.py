@@ -528,12 +528,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
         self._force_next_refresh = True
         await self.async_request_refresh()
 
-    async def async_delayed_refresh(self, delay: float = 8.0) -> None:
-        """Refresh after a delay to allow T-BOX to process command and update cloud state."""
-        await asyncio.sleep(delay)
-        self._force_next_refresh = True
-        await self.async_request_refresh()
-
     async def async_refresh_hvac(self) -> None:
         """Fetch HVAC status via get_status_now and merge into current snapshot.
 

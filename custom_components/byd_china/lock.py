@@ -77,8 +77,10 @@ class BydLock(BydVehicleEntity, LockEntity):
     async def async_lock(self, **kwargs: Any) -> None:
         _LOGGER.debug("Locking all doors: vin=%s", self._vin[-6:])
         try:
+            # execute_control internally polls remoteControlResult until the
+            # cloud confirms the command; the lock state itself is only
+            # refreshed by the low-frequency telemetry poll.
             await self.coordinator.execute_control("LOCKDOOR")
-            await self.coordinator.async_delayed_refresh()
         except Exception as exc:
             _LOGGER.error("Lock command failed: %s", exc)
             raise
@@ -87,7 +89,6 @@ class BydLock(BydVehicleEntity, LockEntity):
         _LOGGER.debug("Unlocking all doors: vin=%s", self._vin[-6:])
         try:
             await self.coordinator.execute_control("OPENDOOR")
-            await self.coordinator.async_delayed_refresh()
         except Exception as exc:
             _LOGGER.error("Unlock command failed: %s", exc)
             raise
