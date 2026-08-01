@@ -23,6 +23,7 @@ from .pybyd_china.models.vehicle import Vehicle
 from .const import DOMAIN
 from .coordinator import BydDataUpdateCoordinator
 from .entity import BydVehicleEntity
+from .pybyd_china._constants import celsius_to_scale, minutes_to_time_span
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -391,7 +392,7 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         self._optimistic_timespan = ts
         self._optimistic_until = _time.time() + 30
         self.async_write_ha_state()
-        params = self._build_ac_params(time_span=ts)
+        params = self._build_ac_params(time_span=minutes_to_time_span(ts))
         try:
             await self.coordinator.execute_control("OPENAIR", params)
             await self._poll_sync()
@@ -409,8 +410,14 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
     ) -> dict[str, Any]:
         if temperature is None:
             temperature = self.target_temperature or 25.0
-        byd_temp = int(temperature) - BYD_TEMP_OFFSET
-        byd_temp = max(1, min(BYD_TEMP_OFFSET + 3, byd_temp))
+        # BYD scale (1-17) offset by 14 = °C.  celsius_to_scale validates
+        # the 15-31 °C range and clamps within the supported scale.
+        try:
+            byd_temp = celsius_to_scale(temperature)
+        except ValueError:
+            raise ValueError(
+                f"空调温度超出支持范围（15-31°C）：{temperature}"
+            ) from None
 
         if cycle_mode is None:
             preset = self.preset_mode

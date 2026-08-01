@@ -571,14 +571,17 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             _LOGGER.debug("get_status_now raw keys: %s", list(hvac_status_raw.keys()) if isinstance(hvac_status_raw, dict) else type(hvac_status_raw))
             hvac = None
             if isinstance(hvac_status_raw, dict) and hvac_status_raw:
-                output_b64 = hvac_status_raw.get("outputBase64") or hvac_status_raw.get("output")
+                output_b64 = hvac_status_raw.get("outputBase64")
                 if output_b64 and isinstance(output_b64, str):
+                    # outputBase64 is base64-encoded JSON.  Decode it, then wrap
+                    # the inner dict as "statusNow" so HvacStatus._unwrap_status_now
+                    # extracts it (the field names use the same camelCase keys).
                     import base64
                     decoded_json = base64.b64decode(output_b64).decode("utf-8", errors="replace")
-                    hvac_inner = json.loads(decoded_json) if decoded_json else {}
+                    hvac_inner = {"statusNow": json.loads(decoded_json)} if decoded_json else {}
                 else:
                     hvac_inner = hvac_status_raw
-                _LOGGER.debug("get_status_now hvac_inner keys: %s", list(hvac_inner.keys()) if isinstance(hvac_inner, dict) else type(hvac_inner))
+                _LOGGER.debug("get_status_now hvac_inner keys: %s", list(hvac_inner.get("statusNow", {}).keys()) if isinstance(hvac_inner.get("statusNow"), dict) else type(hvac_inner))
                 if isinstance(hvac_inner, dict):
                     hvac = HvacStatus.model_validate(hvac_inner)
             if hvac is not None and self.data is not None:
