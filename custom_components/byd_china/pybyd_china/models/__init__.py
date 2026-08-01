@@ -1,6 +1,5 @@
 """Data models for BYD API responses."""
 
-from .._constants import VALID_CLIMATE_DURATIONS, minutes_to_time_span
 from ..models._base import BydBaseModel, BydEnum, BydTimestamp, parse_byd_timestamp
 from ..models.charging import ChargingStatus
 from ..models.energy import EnergyConsumption
@@ -42,12 +41,10 @@ __all__ = [
     "SeatHeatVentState",
     "StearingWheelHeat",
     "TirePressureUnit",
-    "VALID_CLIMATE_DURATIONS",
     "Vehicle",
     "VehicleRealtimeData",
     "VehicleState",
     "WindowState",
     "celsius_to_scale",
-    "minutes_to_time_span",
     "parse_byd_timestamp",
 ]

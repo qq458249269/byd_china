@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -31,25 +31,6 @@ BRAND_NAMES = {
     "4": "仰望",
     "5": "方程豹",
 }
-
-# Brand ID to MQTT broker field name
-CN_BROKER_FIELDS = {
-    "1": "dynastyEmqBroker",
-    "2": "oceanEmqBroker",
-    "3": "denzaEmqBroker",
-    "4": "yangwangEmqBroker",
-    "5": "fangchengbaoEmqBroker",
-}
-
-# Brand ID to MQTT prefix
-CN_MQTT_PREFIXES = {
-    "1": "dynasty",
-    "2": "ocean",
-    "3": "denza",
-    "4": "yangwang",
-    "5": "fangchengbao",
-}
-
 
 # ---------------------------------------------------------------------------
 # BydConfig
@@ -103,23 +84,6 @@ class DeviceProfile:
     network_type: str = "wifi"
     os_type: str = "Android"
     os_version: str = "16"
-
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "ostype": self.ostype,
-            "imei": self.imei,
-            "mac": self.mac,
-            "model": self.model,
-            "sdk": self.sdk,
-            "mod": self.mod,
-            "imeiMD5": self.imei_md5,
-            "mobileBrand": self.mobile_brand,
-            "mobileModel": self.mobile_model,
-            "deviceType": self.device_type,
-            "networkType": self.network_type,
-            "osType": self.os_type,
-            "osVersion": self.os_version,
-        }
 
 
 # ---------------------------------------------------------------------------

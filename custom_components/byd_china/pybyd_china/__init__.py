@@ -9,9 +9,7 @@ from .exceptions import (
     BydAuthenticationError,
     BydControlPasswordError,
     BydDecryptionError,
-    BydEndpointNotSupportedError,
     BydError,
-    BydRemoteControlError,
     BydTransportError,
 )
 from ._state_engine import VehicleSnapshot
@@ -28,9 +26,7 @@ __all__ = [
     "BydConfig",
     "BydControlPasswordError",
     "BydDecryptionError",
-    "BydEndpointNotSupportedError",
     "BydError",
-    "BydRemoteControlError",
     "BydTransportError",
     "BydSession",
     "DeviceProfile",

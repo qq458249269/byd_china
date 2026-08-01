@@ -9,7 +9,6 @@ from typing import Any
 
 from homeassistant.components.climate import (
     ClimateEntity,
-    ClimateEntityDescription,
     ClimateEntityFeature,
     HVACAction,
     HVACMode,
@@ -57,10 +56,6 @@ TIMESPAN_MAP = {
 }
 TIMESPAN_REVERSE = {v: k for k, v in TIMESPAN_MAP.items()}
 TIMESPAN_DEFAULT = 1
-
-
-class BydClimateDescription(ClimateEntityDescription):
-    pass
 
 
 async def async_setup_entry(

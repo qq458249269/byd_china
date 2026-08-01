@@ -340,12 +340,6 @@ def _strip_pkcs7(buf: bytes) -> bytes:
     return buf[:len(buf) - pad_val]
 
 
-def _add_pkcs7(buf: bytes, block_size: int = 16) -> bytes:
-    remainder = len(buf) % block_size
-    pad = block_size if remainder == 0 else block_size - remainder
-    return buf + bytes([pad] * pad)
-
-
 # ---------------------------------------------------------------------------
 # WBC domain helpers for encrypt
 # ---------------------------------------------------------------------------

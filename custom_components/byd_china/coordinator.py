@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .pybyd_china.client import BydClient
-from .pybyd_china.config import BydConfig, BydSession, DeviceProfile
+from .pybyd_china.config import BydConfig, DeviceProfile
 from .pybyd_china.exceptions import (
     BydApiError,
     BydAuthenticationError,
@@ -46,8 +46,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-_HA_EVENT_COMMAND_LIFECYCLE: str = f"{DOMAIN}_command_lifecycle"
 
 _AUTH_ERRORS = (BydAuthenticationError,)
 _RECOVERABLE_ERRORS = (BydApiError, BydTransportError)

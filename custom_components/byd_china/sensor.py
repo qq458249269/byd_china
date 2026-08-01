@@ -12,7 +12,6 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
-    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfLength, UnitOfPressure
@@ -139,36 +138,6 @@ def _tire_status_text(attr: str) -> Callable[[Any], str | None]:
             return "正常"
         return "异常"
     return _fn
-
-
-# Charging state: return raw int value
-def _raw_int(attr: str) -> Callable[[Any], int | None]:
-    def _fn(obj: Any) -> int | None:
-        val = getattr(obj, attr, None)
-        if val is None:
-            return None
-        return getattr(val, "value", val)
-    return _fn
-
-
-# Parse numeric string (e.g. "10.2" -> 10.2)
-def _parse_numeric_string(attr: str) -> Callable[[Any], float | None]:
-    def _convert(obj: Any) -> float | None:
-        value = getattr(obj, attr, None)
-        if value is None or value == "--":
-            return None
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            if isinstance(value, str):
-                match = _LEADING_NUMBER_RE.match(value)
-                if match:
-                    try:
-                        return float(match.group(1))
-                    except ValueError:
-                        pass
-            return None
-    return _convert
 
 
 def _extract_kwh_value(obj: Any) -> float | None:
