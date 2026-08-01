@@ -292,10 +292,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             _LOGGER.warning("Vehicle.model_validate failed, using fallback: %s", exc)
             self._vehicle = self._build_vehicle_fallback(vehicle_info or {}, vin)
 
-        # BydCar is not used in China mode (no state engine / MQTT push),
-        # but entity files reference coordinator.car. Provide a stub.
-        self._car: Any = None
-
     @staticmethod
     def _preprocess_vehicle_info(info: dict[str, Any]) -> dict[str, Any]:
         """Convert CN-specific Java date strings to epoch timestamps.
@@ -373,28 +369,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
     def vehicle(self) -> Vehicle:
         """Return the Vehicle model for entity compatibility."""
         return self._vehicle
-
-    @property
-    def car(self) -> Any:
-        """Return the BydCar aggregate (stub in China mode).
-
-        In the overseas integration, BydCar provides typed capability
-        namespaces (lock, hvac, seat, etc.) backed by the state engine.
-        In China mode we use BydClient.remote_control() directly, so
-        this returns None. Entity files that call car.lock.lock() etc.
-        are adapted to use coordinator.api instead.
-        """
-        return self._car
-
-    def capability_available(self, key: str) -> bool:
-        """Check if a capability is available.
-
-        For location/GPS, always return True.
-        For control commands, always return False (control removed).
-        """
-        if key in ("location", "gps"):
-            return True
-        return False
 
     @property
     def vehicle_info(self) -> dict[str, Any]:

@@ -96,13 +96,6 @@ def compute_cn_checkcode(payload: dict[str, Any]) -> str:
     return hashlib.sha256(json_str.encode("utf-8")).hexdigest()
 
 
-def compute_checkcode(payload: dict[str, Any]) -> str:
-    """Compute overseas checkcode: MD5 with reordered chunks (not used in CN mode, kept for reference)."""
-    json_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-    md5 = hashlib.md5(json_str.encode("utf-8")).hexdigest()
-    return f"{md5[24:32]}{md5[8:16]}{md5[16:24]}{md5[0:8]}"
-
-
 def random_hex16() -> str:
     """Generate 16 random bytes as uppercase hex string (32 chars)."""
     import os
