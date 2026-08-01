@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import enum
 import math
+import re
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
@@ -55,6 +56,44 @@ COMMON_KEY_ALIASES: dict[str, str] = {
 _MS_THRESHOLD = 1_000_000_000_000
 
 
+_JAVA_MONTHS = {name: idx for idx, name in enumerate(
+    ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+)}
+
+_JAVA_DATE_RE = re.compile(
+    r"^\s*(?:\w{3},?\s+)?(\w{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})\s+([A-Za-z]{2,4})?\s*(\d{4})\s*$"
+)
+
+
+def _parse_java_date(value: str) -> datetime | None:
+    """Parse a Java-style date ("Mon Aug 12 00:00:00 CST 2024") without locale dependence.
+
+    CST/CTS are treated as China Standard Time (UTC+8); any other or missing
+    timezone abbreviation is assumed UTC.
+    """
+    match = _JAVA_DATE_RE.match(value)
+    if match is None:
+        return None
+    month_name, day, hour, minute, second, tz_name, year = match.groups()
+    month = _JAVA_MONTHS.get(month_name.capitalize())
+    if month is None:
+        return None
+    try:
+        parsed = datetime(
+            int(year), month + 1, int(day),
+            int(hour), int(minute), int(second),
+        )
+    except ValueError:
+        return None
+    tz_offset = (
+        timedelta(hours=8)
+        if tz_name is not None and tz_name.upper() in ("CST", "CTS")
+        else timedelta(0)
+    )
+    return (parsed - tz_offset).replace(tzinfo=UTC)
+
+
 def parse_byd_timestamp(value: Any) -> datetime | None:
     """Convert a BYD epoch timestamp (seconds **or** milliseconds) to a UTC datetime.
 
@@ -76,33 +115,15 @@ def parse_byd_timestamp(value: Any) -> datetime | None:
             return datetime.fromtimestamp(ts, tz=UTC)
         except (ValueError, TypeError):
             pass
-        # Try parsing Java-style date string (CN API returns these)
-        try:
-            # "Mon Aug 12 00:00:00 CST 2024" -> handle timezone, parse
-            import re
-            from datetime import timedelta
-            stripped = value.strip()
-            # Detect common CN timezone abbreviations and compute UTC offset
-            tz_offset = timedelta(hours=8)  # Default: CST = China Standard Time (UTC+8)
-            tz_match = re.search(r'\s+(CST|CTS)\s+', stripped)
-            if tz_match:
-                stripped = stripped[:tz_match.start()] + " " + stripped[tz_match.end():]
-            else:
-                # Try removing any other 2-4 letter timezone abbreviation
-                cleaned = re.sub(r'\s+[A-Z]{2,4}\s+(\d{4})', r' \1', stripped)
-                tz_offset = timedelta(0)  # Unknown TZ, assume UTC
-                stripped = cleaned
-            # Try common formats
-            for fmt in ("%a %b %d %H:%M:%S %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    dt = datetime.strptime(stripped.strip(), fmt)
-                    # Apply timezone offset (subtract because we want UTC)
-                    return (dt - tz_offset).replace(tzinfo=UTC)
-                except ValueError:
-                    continue
-        except Exception:
-            pass
-        return None
+        # Try ISO-style numeric formats (locale-independent)
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value.strip(), fmt).replace(tzinfo=UTC)
+            except ValueError:
+                continue
+        # Try Java-style date strings like "Mon Aug 12 00:00:00 CST 2024".
+        # Manual parse: %a/%b via strptime is locale-dependent.
+        return _parse_java_date(value)
     try:
         ts = int(value)
     except (ValueError, TypeError):

@@ -49,10 +49,10 @@ class BydDeviceTracker(BydVehicleEntity, TrackerEntity):
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(gps_coordinator)
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_device_tracker_location"
+        super().__init__(gps_coordinator)
 
     @property
     def latitude(self) -> float | None:

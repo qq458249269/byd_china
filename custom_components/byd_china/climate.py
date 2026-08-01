@@ -23,14 +23,14 @@ from .pybyd_china.models.vehicle import Vehicle
 from .const import DOMAIN
 from .coordinator import BydDataUpdateCoordinator
 from .entity import BydVehicleEntity
-from .pybyd_china._constants import celsius_to_scale, minutes_to_time_span
+from .pybyd_china._constants import celsius_to_scale
 
 _LOGGER = logging.getLogger(__name__)
 
 BYD_TEMP_MIN = 15
 BYD_TEMP_MAX = 31
 BYD_TEMP_STEP = 1.0
-BYD_TEMP_OFFSET = 16
+BYD_TEMP_OFFSET = 14
 
 CYCLE_MODE_EXTERNAL = 1
 CYCLE_MODE_INTERNAL = 2
@@ -111,10 +111,10 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(coordinator)
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_climate_byd_climate"
+        super().__init__(coordinator)
         self._optimistic_mode: HVACMode | None = None
         self._optimistic_temp: float | None = None
         self._optimistic_preset: str | None = None
@@ -193,7 +193,8 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
             return None
         if v <= 0:
             return None
-        if v <= BYD_TEMP_OFFSET + 3:
+        if v <= 17:
+            # BYD scale value (1-17): 15-31 deg C.
             return v + BYD_TEMP_OFFSET
         return v
 
@@ -392,7 +393,8 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         self._optimistic_timespan = ts
         self._optimistic_until = _time.time() + 30
         self.async_write_ha_state()
-        params = self._build_ac_params(time_span=minutes_to_time_span(ts))
+        # TIMESPAN_MAP values are already the BYD time_span codes (1-5).
+        params = self._build_ac_params(time_span=ts)
         try:
             await self.coordinator.execute_control("OPENAIR", params)
             await self._poll_sync()

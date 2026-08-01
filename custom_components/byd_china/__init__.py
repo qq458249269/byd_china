@@ -7,7 +7,11 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
@@ -47,66 +51,6 @@ def _sanitize_interval(value: int, default: int, min_value: int, max_value: int)
     except (TypeError, ValueError):
         return default
     return max(min_value, min(max_value, parsed))
-
-
-def _preprocess_cn_dates(info: dict[str, Any]) -> dict[str, Any]:
-    """Convert CN-specific Java date strings to epoch timestamps.
-
-    The CN API returns dates like "Mon Aug 12 00:00:00 CST 2024" for
-    autoBoughtTime / yunActiveTime / tApproveTm, but the pydantic Vehicle
-    model expects epoch integers for BydTimestamp fields.
-    """
-    import re
-    from datetime import datetime, timedelta
-
-    if not isinstance(info, dict):
-        return info
-
-    result = dict(info)
-    # All fields that may contain Java-style date strings
-    date_fields = {"autoBoughtTime", "yunActiveTime", "tApproveTm"}
-
-    for field in date_fields:
-        value = result.get(field)
-        if not isinstance(value, str) or not value.strip():
-            continue
-        # Already an epoch number string?
-        try:
-            int(value)
-            continue
-        except ValueError:
-            pass
-        # Parse Java-style date: "Mon Aug 12 00:00:00 CST 2024"
-        try:
-            stripped = value.strip()
-            # CST = China Standard Time (UTC+8)
-            tz_offset = timedelta(hours=8)
-            tz_match = re.search(r'\s+(CST|CTS)\s+', stripped)
-            if tz_match:
-                stripped = stripped[:tz_match.start()] + " " + stripped[tz_match.end():]
-            else:
-                # Try removing any other 2-4 letter timezone abbreviation
-                cleaned = re.sub(r'\s+[A-Z]{2,4}\s+(\d{4})', r' \1', stripped)
-                tz_offset = timedelta(0)
-                stripped = cleaned
-            for fmt in ("%a %b %d %H:%M:%S %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    dt = datetime.strptime(stripped.strip(), fmt)
-                    utc_dt = dt - tz_offset
-                    epoch = int(utc_dt.timestamp())
-                    result[field] = epoch
-                    _LOGGER.debug(
-                        "Converted CN date field %s: '%s' -> epoch %d",
-                        field, value, epoch,
-                    )
-                    break
-                except ValueError:
-                    continue
-        except Exception:
-            # If parsing fails, remove the field so pydantic uses default
-            result.pop(field, None)
-            _LOGGER.debug("Removed unparseable date field %s: '%s'", field, value)
-    return result
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -230,7 +174,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _fetch_vehicles(client: BydClient) -> list:
         return await client.get_vehicles()
 
-    vehicles = await api.async_call(_fetch_vehicles)
+    try:
+        vehicles = await api.async_call(_fetch_vehicles)
+    except ConfigEntryAuthFailed:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ConfigEntryNotReady(f"Unable to fetch vehicles: {exc}") from exc
     if not vehicles:
         raise ConfigEntryNotReady("No vehicles available for this account")
 
@@ -246,10 +195,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     for vehicle in vehicles:
         vin = vehicle.get("vin", "") if isinstance(vehicle, dict) else vehicle.vin
         vehicle_info = vehicle if isinstance(vehicle, dict) else {}
-
-        # Pre-process CN-specific Java date strings (e.g. "Mon Aug 12 00:00:00 CST 2024")
-        # into epoch integers so pydantic BydTimestamp can parse them.
-        vehicle_info = _preprocess_cn_dates(vehicle_info)
 
         telemetry_coordinator = BydDataUpdateCoordinator(
             hass,

@@ -60,7 +60,6 @@ class BydClient:
         self._session_external = session
         self._session_internal: aiohttp.ClientSession | None = None
         self._session_data = BydSession()
-        self._cookie_jar: dict[str, str] = {}
         self._on_mqtt_event = on_mqtt_event
         self._on_command_ack = on_command_ack
         self._on_command_lifecycle = on_command_lifecycle
@@ -100,11 +99,6 @@ class BydClient:
     # -----------------------------------------------------------------------
     # Cookie management
     # -----------------------------------------------------------------------
-
-    def _update_cookies(self, headers: dict) -> None:
-        """Extract set-cookie headers and store in jar."""
-        # aiohttp handles cookies via cookie_jar on the session
-        pass  # aiohttp's CookieJar handles this automatically
 
     # -----------------------------------------------------------------------
     # HTTP request with WBSK encryption
@@ -312,22 +306,26 @@ class BydClient:
         """Check if realtime data contains meaningful values."""
         if not vehicle_info or not isinstance(vehicle_info, dict):
             return False
-        # onlineState === 2 means offline, data not usable
-        if int(vehicle_info.get("onlineState", 0)) == 2:
+        try:
+            # onlineState === 2 means offline, data not usable
+            if int(vehicle_info.get("onlineState", 0)) == 2:
+                return False
+            # Has tire pressure data?
+            tire_fields = [
+                "leftFrontTirepressure", "rightFrontTirepressure",
+                "leftRearTirepressure", "rightRearTirepressure",
+            ]
+            if any(float(vehicle_info.get(f, 0)) > 0 for f in tire_fields):
+                return True
+            # Has timestamp?
+            if int(vehicle_info.get("time", 0)) > 0:
+                return True
+            # Has endurance mileage?
+            if float(vehicle_info.get("enduranceMileage", 0)) > 0:
+                return True
+        except (TypeError, ValueError):
+            # Unparseable values (e.g. "N/A") mean data is not usable yet.
             return False
-        # Has tire pressure data?
-        tire_fields = [
-            "leftFrontTirepressure", "rightFrontTirepressure",
-            "leftRearTirepressure", "rightRearTirepressure",
-        ]
-        if any(float(vehicle_info.get(f, 0)) > 0 for f in tire_fields):
-            return True
-        # Has timestamp?
-        if int(vehicle_info.get("time", 0)) > 0:
-            return True
-        # Has endurance mileage?
-        if float(vehicle_info.get("enduranceMileage", 0)) > 0:
-            return True
         return False
 
     async def _fetch_vehicle_realtime(
@@ -471,7 +469,7 @@ class BydClient:
         data = self._decrypt_respond_data(decoded.get("respondData", ""), req["content_key"])
 
         broker_field = CN_BROKER_FIELDS.get(self._config.target_brand, "dynastyEmqBroker")
-        broker = str(data.get(broker_field, "")) if data else ""
+        broker = str(data.get(broker_field, "")) if isinstance(data, dict) else ""
 
         if not broker:
             raise BydApiError(f"Broker lookup response missing broker (brand={self._config.target_brand})")
@@ -561,7 +559,7 @@ class BydClient:
             "controlParamsMap": json.dumps(control_params or {}, separators=(",", ":")),
             "commandPwd": command_pwd,
             "asyncControl": "0",
-            "requestSerial": str(now_ms % 10000),
+            "requestSerial": str(now_ms % 100000),
             "source": "app",
             "tboxVersion": self._config.tbox_version,
         }

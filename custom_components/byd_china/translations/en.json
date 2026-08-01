@@ -23,7 +23,7 @@
       "invalid_auth": "Invalid phone number or password",
       "account_locked": "Account is locked. Please try again later or contact BYD support.",
       "decryption_error": "Server response decryption failed. The integration may need updating.",
-      "invalid_pin_format": "Control PIN must be a 4-6 digit number",
+      "invalid_pin_format": "Control PIN must be a 6-digit number",
       "unknown": "Unexpected error"
     },
     "abort": {
@@ -63,8 +63,8 @@
       "byd_climate": { "name": "Climate control" }
     },
     "number": {
-      "realtime_poll_interval": { "name": "Telemetry poll interval (hours)" },
-      "gps_poll_interval": { "name": "GPS poll interval (hours)" }
+      "realtime_poll_interval": { "name": "Telemetry poll interval (hours, all vehicles)" },
+      "gps_poll_interval": { "name": "GPS poll interval (hours, all vehicles)" }
     },
     "lock": {
       "vehicle_lock": { "name": "Door locks" }

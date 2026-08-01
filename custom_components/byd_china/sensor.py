@@ -26,12 +26,11 @@ from .const import DOMAIN
 from .coordinator import BydDataUpdateCoordinator, BydGpsUpdateCoordinator
 from .entity import BydVehicleEntity
 from .pybyd_china._state_engine import VehicleSnapshot
+from .pybyd_china.config import BRAND_NAMES
 
 # ---------------------------------------------------------------------------
 # Validators
 # ---------------------------------------------------------------------------
-
-FieldValidator = Callable[[Any, Any], Any]
 
 
 def _normalize_epoch(value: Any) -> datetime | None:
@@ -52,7 +51,6 @@ class BydSensorDescription(SensorEntityDescription):
     source: str = "realtime"
     attr_key: str | None = None
     value_fn: Callable[[Any], Any] | None = None
-    validator_fn: FieldValidator | None = None
     use_gps_coordinator: bool = False
 
 
@@ -313,6 +311,9 @@ async def async_setup_entry(
 # Keys that read from Vehicle model (not realtime data)
 _VEHICLE_INFO_KEYS = {"vin", "c_car_type", "auto_plate", "auto_out_color", "vehicle_image", "channel"}
 
+# Brand channel -> display name (keys are ints; BRAND_NAMES uses strings)
+_CHANNEL_MAP = {int(k): v for k, v in BRAND_NAMES.items()}
+
 
 class BydSensor(BydVehicleEntity, SensorEntity):
     """Representation of a BYD vehicle sensor."""
@@ -328,13 +329,12 @@ class BydSensor(BydVehicleEntity, SensorEntity):
         description: BydSensorDescription,
     ) -> None:
         """Initialize the sensor."""
-        super().__init__(coordinator)
         self.entity_description = description
         self._attr_translation_key = description.key
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_{description.source}_{description.key}"
-        self._last_native_value: Any | None = None
+        super().__init__(coordinator)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -424,7 +424,6 @@ class BydSensor(BydVehicleEntity, SensorEntity):
             return self._vehicle.pic_main_url or None
         if key == "channel":
             # channel from vehicle_info raw dict, translate to brand name
-            _CHANNEL_MAP = {1: "王朝", 2: "海洋", 3: "腾势", 4: "方程豹", 5: "仰望"}
             ch = self._vehicle.channel
             if ch is not None:
                 return _CHANNEL_MAP.get(ch, str(ch))
@@ -491,16 +490,6 @@ class BydSensor(BydVehicleEntity, SensorEntity):
             return enum_value
         return value
 
-    def _resolve_validated_value(self) -> Any:
-        """Resolve sensor value and apply optional per-entity validation."""
-        value = self._resolve_value()
-        validator = self.entity_description.validator_fn
-        if validator is not None:
-            value = validator(self._last_native_value, value)
-        if value is not None:
-            self._last_native_value = value
-        return value
-
     # ------------------------------------------------------------------
     # Entity properties
     # ------------------------------------------------------------------
@@ -543,4 +532,4 @@ class BydSensor(BydVehicleEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         """Return the sensor value."""
-        return self._resolve_validated_value()
+        return self._resolve_value()

@@ -47,10 +47,10 @@ class BydLock(BydVehicleEntity, LockEntity):
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(coordinator)
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_lock"
+        super().__init__(coordinator)
 
     def _get_lock_states(self) -> list[LockState] | None:
         """Return list of door lock states from realtime data, or None if unknown."""
