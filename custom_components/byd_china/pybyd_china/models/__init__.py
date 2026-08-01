@@ -1,10 +1,11 @@
 """Data models for BYD API responses."""
 
+from .._constants import celsius_to_scale
 from ..models._base import BydBaseModel, BydEnum, BydTimestamp, parse_byd_timestamp
 from ..models.charging import ChargingStatus
 from ..models.energy import EnergyConsumption
 from ..models.gps import GpsInfo
-from ..models.hvac import HvacStatus, celsius_to_scale
+from ..models.hvac import HvacStatus
 from ..models.realtime import (
     AirCirculationMode,
     ChargingState,
