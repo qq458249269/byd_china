@@ -105,3 +105,8 @@ class BydSession:
     def identifier(self) -> str:
         """Return the primary identifier (superId for CN)."""
         return self.super_id or self.user_id
+
+    @property
+    def has_tokens(self) -> bool:
+        """Return whether both token fields are present and usable."""
+        return bool(self.encrypt_token and self.sign_token)

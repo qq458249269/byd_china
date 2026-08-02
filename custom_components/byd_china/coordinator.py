@@ -14,13 +14,14 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
 
 from .pybyd_china.client import BydClient
-from .pybyd_china.config import BydConfig, DeviceProfile
+from .pybyd_china.config import BydConfig, BydSession, DeviceProfile
 from .pybyd_china.exceptions import (
     BydApiError,
     BydAuthenticationError,
@@ -47,8 +48,9 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_AUTH_ERRORS = (BydAuthenticationError,)
-_RECOVERABLE_ERRORS = (BydApiError, BydTransportError)
+# Minimum gap between password re-logins, to avoid kicking the BYD app
+# repeatedly or tripping the login rate limit when the session keeps failing.
+_RELOGIN_COOLDOWN = 300.0
 
 _A = 6378245.0
 _EE = 0.00669342162296594323
@@ -124,6 +126,8 @@ class BydApi:
         )
         self._client: BydClient | None = None
         self._client_lock = asyncio.Lock()
+        self._session_store = Store(hass, 1, f"{DOMAIN}.session.{entry.entry_id}")
+        self._last_relogin_ts = perf_counter()
         self._debug_dumps_enabled = entry.options.get(
             CONF_DEBUG_DUMPS,
             DEFAULT_DEBUG_DUMPS,
@@ -208,12 +212,22 @@ class BydApi:
                 "Creating new pybyd_china client: entry_id=%s",
                 self._entry.entry_id,
             )
-            self._client = BydClient(
+            session_data = await self._load_session()
+            client = BydClient(
                 self._config,
                 self._device,
                 session=self._http_session,
+                session_data=session_data,
             )
-            await self._client.login()
+            if not client.has_session:
+                # No persisted token: only then perform a password login.
+                _LOGGER.debug(
+                    "No usable persisted session, logging in: entry_id=%s",
+                    self._entry.entry_id,
+                )
+                await client.login()
+                await self._save_session(client.session_data)
+            self._client = client
         return self._client
 
     async def _invalidate_client(self) -> None:
@@ -224,6 +238,75 @@ class BydApi:
             )
             self._client = None
 
+    async def _load_session(self) -> BydSession | None:
+        """Restore a previously persisted token session, if any."""
+        try:
+            data = await self._session_store.async_load()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed to load persisted BYD session", exc_info=True)
+            return None
+        if not isinstance(data, dict):
+            return None
+        try:
+            session = BydSession(
+                super_id=str(data.get("super_id", "")),
+                user_id=str(data.get("user_id", "")),
+                encrypt_token=str(data.get("encrypt_token", "")),
+                sign_token=str(data.get("sign_token", "")),
+            )
+        except (TypeError, ValueError):
+            return None
+        if not session.has_tokens:
+            return None
+        return session
+
+    async def _save_session(self, session: BydSession) -> None:
+        """Persist the current token session for the next restart."""
+        try:
+            await self._session_store.async_save(
+                {
+                    "super_id": session.super_id,
+                    "user_id": session.user_id,
+                    "encrypt_token": session.encrypt_token,
+                    "sign_token": session.sign_token,
+                }
+            )
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed to persist BYD session", exc_info=True)
+
+    async def _relogin(self, stale: BydClient) -> BydClient:
+        """Re-authenticate with a fresh password login (single-flight).
+
+        Only logs in when *stale* is still the active client, so concurrent
+        callers share a single re-login. Failed or throttled attempts keep
+        the existing client intact (the session may still work later).
+        """
+        async with self._client_lock:
+            if self._client is not None and self._client is not stale:
+                return self._client
+            if perf_counter() - self._last_relogin_ts < _RELOGIN_COOLDOWN:
+                raise UpdateFailed("BYD re-login throttled (retrying later)")
+            try:
+                client = BydClient(
+                    self._config,
+                    self._device,
+                    session=self._http_session,
+                )
+                await client.login()
+            except BydAuthenticationError:
+                raise
+            except (BydApiError, BydTransportError) as exc:
+                self._last_relogin_ts = perf_counter()
+                raise UpdateFailed(f"BYD re-login failed: {exc}") from exc
+            self._last_relogin_ts = perf_counter()
+            self._client = client
+            await self._save_session(client.session_data)
+            _LOGGER.info(
+                "BYD re-login successful, superId=%s",
+                client.session_data.super_id,
+            )
+            return client
+
     async def async_call(
         self,
         handler: Any,
@@ -231,7 +314,13 @@ class BydApi:
         vin: str | None = None,
         command: str | None = None,
     ) -> Any:
-        """Execute a pybyd_china call with error translation."""
+        """Execute a pybyd_china call with error translation.
+
+        Transient transport/API errors keep the existing client, so a
+        network blip never triggers a password re-login (which would kick
+        the BYD app offline). Token rejection triggers exactly one
+        re-login, then the call is retried once.
+        """
         call_started = perf_counter()
         _LOGGER.debug(
             "BYD API call started: entry_id=%s, vin=%s, command=%s",
@@ -241,6 +330,11 @@ class BydApi:
         )
         try:
             client = await self._ensure_client()
+        except BydAuthenticationError as exc:
+            raise ConfigEntryAuthFailed(str(exc)) from exc
+        except (BydApiError, BydTransportError) as exc:
+            raise UpdateFailed(str(exc)) from exc
+        try:
             result = await handler(client)
             _LOGGER.debug(
                 "BYD API call succeeded: entry_id=%s, vin=%s, "
@@ -251,11 +345,35 @@ class BydApi:
                 (perf_counter() - call_started) * 1000,
             )
             return result
-        except BydAuthenticationError as exc:
-            await self._invalidate_client()
-            raise ConfigEntryAuthFailed(str(exc)) from exc
+        except BydAuthenticationError:
+            _LOGGER.info(
+                "BYD session rejected, re-authenticating once: entry_id=%s",
+                self._entry.entry_id,
+            )
+            try:
+                client = await self._relogin(client)
+            except BydAuthenticationError as exc:
+                await self._invalidate_client()
+                raise ConfigEntryAuthFailed(str(exc)) from exc
+            try:
+                result = await handler(client)
+                _LOGGER.debug(
+                    "BYD API call succeeded after re-login: entry_id=%s, "
+                    "vin=%s, command=%s, duration_ms=%.1f",
+                    self._entry.entry_id,
+                    vin[-6:] if vin else "-",
+                    command or "-",
+                    (perf_counter() - call_started) * 1000,
+                )
+                return result
+            except BydAuthenticationError as exc:
+                await self._invalidate_client()
+                raise ConfigEntryAuthFailed(str(exc)) from exc
+            except BydTransportError as exc:
+                raise UpdateFailed(str(exc)) from exc
+            except BydApiError as exc:
+                raise UpdateFailed(str(exc)) from exc
         except BydTransportError as exc:
-            await self._invalidate_client()
             raise UpdateFailed(str(exc)) from exc
         except BydApiError as exc:
             raise UpdateFailed(str(exc)) from exc
@@ -351,117 +469,124 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             return self.data
 
         try:
-            client = await self._api._ensure_client()
-            empower_type = self._vehicle_info.get("empowerType")
-            empower_id = self._vehicle_info.get("empowerId")
-            permission_status = self._vehicle_info.get("permissionStatus")
-            is_shared = (
-                empower_id is not None
-                and str(empower_id).strip() != ""
+            return await self._api.async_call(
+                self._fetch_snapshot, vin=self._vin, command="telemetry"
             )
-            self._is_shared = is_shared
-            _LOGGER.debug(
-                "Telemetry is_shared=%s (empowerType=%s, empowerId=%s, permissionStatus=%s)",
-                is_shared, empower_type, empower_id, permission_status,
+        except ConfigEntryAuthFailed:
+            raise
+        except UpdateFailed as exc:
+            _LOGGER.warning(
+                "Telemetry fetch failed (keeping stale data): vin=%s, error=%s",
+                self._vin[-6:], exc,
             )
-            realtime_raw = await client.get_vehicle_realtime(self._vin, is_shared=is_shared)
-
-            if self._api.debug_dumps_enabled:
-                dump: dict[str, Any] = {"vin": self._vin, "realtime": realtime_raw}
-                self.hass.async_create_task(
-                    self._api.async_write_debug_dump("telemetry", dump)
-                )
-
-            # Parse raw dict into typed models for entity compatibility.
-            try:
-                realtime = VehicleRealtimeData.model_validate(realtime_raw) if isinstance(realtime_raw, dict) else None
-            except Exception as exc:
-                _LOGGER.warning("VehicleRealtimeData.model_validate failed: %s", exc)
-                realtime = None
-
-            hvac = None
-            if isinstance(realtime_raw, dict):
-                try:
-                    hvac_extract = {}
-                    ac_field_map = {
-                        "acSwitch": "acSwitch",
-                        "status": "status",
-                        "mainSettingTemp": "mainSettingTemp",
-                        "mainSettingTempNew": "mainSettingTempNew",
-                        "copilotSettingTemp": "copilotSettingTemp",
-                        "copilotSettingTempNew": "copilotSettingTempNew",
-                        "tempInCar": "tempInCar",
-                        "tempOutCar": "tempOutCar",
-                        "windMode": "windMode",
-                        "windPosition": "windPosition",
-                        "cycleChoice": "cycleChoice",
-                        "airRunState": "cycleChoice",
-                        "timeChoice": "timeChoice",
-                        "delayOffTime": "delayOffTime",
-                        "mainSeatHeatState": "mainSeatHeatState",
-                        "steeringWheelHeatState": "steeringWheelHeatState",
-                    }
-                    for src_key, dst_key in ac_field_map.items():
-                        val = realtime_raw.get(src_key)
-                        if val is not None:
-                            hvac_extract[dst_key] = val
-                    _LOGGER.debug("realtime fallback hvac_extract: %s", hvac_extract)
-                    if hvac_extract:
-                        ac_sw = hvac_extract.get("acSwitch")
-                        st = hvac_extract.get("status")
-                        if ac_sw is None and st is None:
-                            has_temp = hvac_extract.get("mainSettingTemp") is not None
-                            has_circ = hvac_extract.get("cycleChoice") is not None
-                            if has_temp or has_circ:
-                                hvac_extract.setdefault("acSwitch", 1)
-                                hvac_extract.setdefault("status", 1)
-                        hvac = HvacStatus.model_validate(hvac_extract)
-                except Exception as exc:
-                    _LOGGER.debug("HvacStatus from realtime fallback failed: %s", exc)
-
-            if hvac is not None:
-                _LOGGER.debug(
-                    "HVAC: is_ac_on=%s, status=%s, acSwitch=%s, mainSettingTemp=%s, mainSettingTempNew=%s, raw_keys=%s",
-                    hvac.is_ac_on, hvac.status, hvac.ac_switch, hvac.main_setting_temp, hvac.main_setting_temp_new,
-                    list(hvac.raw.keys()) if isinstance(getattr(hvac, "raw", None), dict) else "no_raw",
-                )
-            else:
-                _LOGGER.debug("HVAC: hvac is None after all attempts")
-
-            historical_raw: dict[str, Any] = {}
-            recent_raw: dict[str, Any] = {}
-            auto_type = self._vehicle.out_model_type or "1"
-            try:
-                historical_raw = await client.get_historical_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
-                _LOGGER.debug("Historical energy data: %s", historical_raw)
-            except Exception as exc:
-                _LOGGER.warning("get_historical_data_by_vin failed: %s", exc)
-            try:
-                recent_raw = await client.get_recent_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
-                _LOGGER.debug("Recent energy data: %s", recent_raw)
-            except Exception as exc:
-                _LOGGER.warning("get_recent_data_by_vin failed: %s", exc)
-
-            snapshot = VehicleSnapshot(
-                vehicle=self._vehicle,
-                realtime=realtime,
-                hvac=hvac,
-                is_shared=self._is_shared,
-                historical_energy=historical_raw,
-                recent_energy=recent_raw,
-            )
-
-            _LOGGER.debug(
-                "Telemetry refresh succeeded: vin=%s",
-                self._vin[-6:],
-            )
-            return snapshot
-        except _AUTH_ERRORS as exc:
-            await self._api._invalidate_client()
-            raise ConfigEntryAuthFailed(str(exc)) from exc
-        except _RECOVERABLE_ERRORS as exc:
-            _LOGGER.warning("Telemetry fetch failed (keeping stale data): vin=%s, error=%s", self._vin[-6:], exc)
             return self.data
+
+    async def _fetch_snapshot(self, client: BydClient) -> VehicleSnapshot | None:
+        """Fetch realtime + energy data for one VIN and build a snapshot."""
+        empower_type = self._vehicle_info.get("empowerType")
+        empower_id = self._vehicle_info.get("empowerId")
+        permission_status = self._vehicle_info.get("permissionStatus")
+        is_shared = (
+            empower_id is not None
+            and str(empower_id).strip() != ""
+        )
+        self._is_shared = is_shared
+        _LOGGER.debug(
+            "Telemetry is_shared=%s (empowerType=%s, empowerId=%s, permissionStatus=%s)",
+            is_shared, empower_type, empower_id, permission_status,
+        )
+        realtime_raw = await client.get_vehicle_realtime(self._vin, is_shared=is_shared)
+
+        if self._api.debug_dumps_enabled:
+            dump: dict[str, Any] = {"vin": self._vin, "realtime": realtime_raw}
+            self.hass.async_create_task(
+                self._api.async_write_debug_dump("telemetry", dump)
+            )
+
+        # Parse raw dict into typed models for entity compatibility.
+        try:
+            realtime = VehicleRealtimeData.model_validate(realtime_raw) if isinstance(realtime_raw, dict) else None
+        except Exception as exc:
+            _LOGGER.warning("VehicleRealtimeData.model_validate failed: %s", exc)
+            realtime = None
+
+        hvac = None
+        if isinstance(realtime_raw, dict):
+            try:
+                hvac_extract = {}
+                ac_field_map = {
+                    "acSwitch": "acSwitch",
+                    "status": "status",
+                    "mainSettingTemp": "mainSettingTemp",
+                    "mainSettingTempNew": "mainSettingTempNew",
+                    "copilotSettingTemp": "copilotSettingTemp",
+                    "copilotSettingTempNew": "copilotSettingTempNew",
+                    "tempInCar": "tempInCar",
+                    "tempOutCar": "tempOutCar",
+                    "windMode": "windMode",
+                    "windPosition": "windPosition",
+                    "cycleChoice": "cycleChoice",
+                    "airRunState": "cycleChoice",
+                    "timeChoice": "timeChoice",
+                    "delayOffTime": "delayOffTime",
+                    "mainSeatHeatState": "mainSeatHeatState",
+                    "steeringWheelHeatState": "steeringWheelHeatState",
+                }
+                for src_key, dst_key in ac_field_map.items():
+                    val = realtime_raw.get(src_key)
+                    if val is not None:
+                        hvac_extract[dst_key] = val
+                _LOGGER.debug("realtime fallback hvac_extract: %s", hvac_extract)
+                if hvac_extract:
+                    ac_sw = hvac_extract.get("acSwitch")
+                    st = hvac_extract.get("status")
+                    if ac_sw is None and st is None:
+                        has_temp = hvac_extract.get("mainSettingTemp") is not None
+                        has_circ = hvac_extract.get("cycleChoice") is not None
+                        if has_temp or has_circ:
+                            hvac_extract.setdefault("acSwitch", 1)
+                            hvac_extract.setdefault("status", 1)
+                    hvac = HvacStatus.model_validate(hvac_extract)
+            except Exception as exc:
+                _LOGGER.debug("HvacStatus from realtime fallback failed: %s", exc)
+
+        if hvac is not None:
+            _LOGGER.debug(
+                "HVAC: is_ac_on=%s, status=%s, acSwitch=%s, mainSettingTemp=%s, mainSettingTempNew=%s, raw_keys=%s",
+                hvac.is_ac_on, hvac.status, hvac.ac_switch, hvac.main_setting_temp, hvac.main_setting_temp_new,
+                list(hvac.raw.keys()) if isinstance(getattr(hvac, "raw", None), dict) else "no_raw",
+            )
+        else:
+            _LOGGER.debug("HVAC: hvac is None after all attempts")
+
+        historical_raw: dict[str, Any] = {}
+        recent_raw: dict[str, Any] = {}
+        auto_type = self._vehicle.out_model_type or "1"
+        try:
+            historical_raw = await client.get_historical_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
+            _LOGGER.debug("Historical energy data: %s", historical_raw)
+        except Exception as exc:
+            _LOGGER.warning("get_historical_data_by_vin failed: %s", exc)
+        try:
+            recent_raw = await client.get_recent_data_by_vin(self._vin, is_shared=is_shared, auto_type=auto_type)
+            _LOGGER.debug("Recent energy data: %s", recent_raw)
+        except Exception as exc:
+            _LOGGER.warning("get_recent_data_by_vin failed: %s", exc)
+
+        snapshot = VehicleSnapshot(
+            vehicle=self._vehicle,
+            realtime=realtime,
+            hvac=hvac,
+            is_shared=self._is_shared,
+            historical_energy=historical_raw,
+            recent_energy=recent_raw,
+        )
+
+        _LOGGER.debug(
+            "Telemetry refresh succeeded: vin=%s",
+            self._vin[-6:],
+        )
+        return snapshot
 
     # Polling control
     @property
@@ -529,8 +654,12 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             _LOGGER.debug("async_refresh_hvac failed (non-critical): %s", exc)
 
     async def execute_control(self, command_type: str, control_params: dict | None = None, max_retries: int = 3) -> dict:
-        try:
-            client = await self._api._ensure_client()
+        """Execute a remote control command via the shared API client.
+
+        Runs through :meth:`BydApi.async_call` so a rejected session is
+        re-authenticated once instead of failing the command.
+        """
+        async def _run(client: BydClient) -> dict:
             vin = self._vin
             if not self._pin_verified:
                 await client.verify_command_access(vin, is_shared=self._is_shared)
@@ -560,10 +689,8 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
                     raise UpdateFailed("Control command result timed out")
                 return result
             raise UpdateFailed("Control command failed after max retries")
-        except BydAuthenticationError as exc:
-            await self._api._invalidate_client()
-            raise ConfigEntryAuthFailed(str(exc)) from exc
 
+        return await self._api.async_call(_run, vin=self._vin, command=command_type)
 
 class BydGpsUpdateCoordinator(DataUpdateCoordinator[GpsInfo | None]):
     """Coordinator for GPS updates for a single VIN (CN single-request)."""
@@ -627,37 +754,44 @@ class BydGpsUpdateCoordinator(DataUpdateCoordinator[GpsInfo | None]):
             return self.data
 
         try:
-            client = await self._api._ensure_client()
-            empower_type = self._vehicle_info.get("empowerType")
-            empower_id = self._vehicle_info.get("empowerId")
-            permission_status = self._vehicle_info.get("permissionStatus")
-            is_shared = (
-                empower_id is not None
-                and str(empower_id).strip() != ""
+            return await self._api.async_call(
+                self._fetch_gps, vin=self._vin, command="gps"
             )
-            gps_raw = await client.get_gps(self._vin, is_shared=is_shared)
-
-            if self._api.debug_dumps_enabled:
-                dump: dict[str, Any] = {"vin": self._vin, "gps": gps_raw}
-                self.hass.async_create_task(
-                    self._api.async_write_debug_dump("gps", dump)
-                )
-
-            # Parse raw dict into GpsInfo model for entity compatibility.
-            try:
-                gps = GpsInfo.model_validate(gps_raw) if isinstance(gps_raw, dict) else None
-            except Exception as exc:
-                _LOGGER.warning("GpsInfo.model_validate failed: %s", exc)
-                gps = None
-
-            _LOGGER.debug(
-                "GPS refresh succeeded: vin=%s",
-                self._vin[-6:],
+        except ConfigEntryAuthFailed:
+            raise
+        except UpdateFailed as exc:
+            _LOGGER.warning(
+                "GPS fetch failed (keeping stale data): vin=%s, error=%s",
+                self._vin, exc,
             )
-            return gps
-        except _AUTH_ERRORS as exc:
-            await self._api._invalidate_client()
-            raise ConfigEntryAuthFailed(str(exc)) from exc
-        except _RECOVERABLE_ERRORS as exc:
-            _LOGGER.warning("GPS fetch failed: vin=%s, error=%s", self._vin, exc)
             return self.data
+
+    async def _fetch_gps(self, client: BydClient) -> GpsInfo | None:
+        """Fetch GPS data for one VIN."""
+        empower_type = self._vehicle_info.get("empowerType")
+        empower_id = self._vehicle_info.get("empowerId")
+        permission_status = self._vehicle_info.get("permissionStatus")
+        is_shared = (
+            empower_id is not None
+            and str(empower_id).strip() != ""
+        )
+        gps_raw = await client.get_gps(self._vin, is_shared=is_shared)
+
+        if self._api.debug_dumps_enabled:
+            dump: dict[str, Any] = {"vin": self._vin, "gps": gps_raw}
+            self.hass.async_create_task(
+                self._api.async_write_debug_dump("gps", dump)
+            )
+
+        # Parse raw dict into GpsInfo model for entity compatibility.
+        try:
+            gps = GpsInfo.model_validate(gps_raw) if isinstance(gps_raw, dict) else None
+        except Exception as exc:
+            _LOGGER.warning("GpsInfo.model_validate failed: %s", exc)
+            gps = None
+
+        _LOGGER.debug(
+            "GPS refresh succeeded: vin=%s",
+            self._vin[-6:],
+        )
+        return gps

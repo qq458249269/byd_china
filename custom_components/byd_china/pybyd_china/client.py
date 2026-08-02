@@ -49,6 +49,7 @@ class BydClient:
         config: BydConfig,
         device_profile: DeviceProfile,
         session: aiohttp.ClientSession | None = None,
+        session_data: BydSession | None = None,
         on_mqtt_event: Callable | None = None,
         on_command_ack: Callable | None = None,
         on_command_lifecycle: Callable | None = None,
@@ -57,7 +58,13 @@ class BydClient:
         self._device = device_profile
         self._session_external = session
         self._session_internal: aiohttp.ClientSession | None = None
-        self._session_data = BydSession()
+        self._session_data = session_data or BydSession()
+        if session_data is not None:
+            # Re-derive session keys when restoring a persisted session.
+            if not self._session_data.content_key and self._session_data.encrypt_token:
+                self._session_data.content_key = md5_hex(self._session_data.encrypt_token)
+            if not self._session_data.sign_key and self._session_data.sign_token:
+                self._session_data.sign_key = md5_hex(self._session_data.sign_token)
         self._on_mqtt_event = on_mqtt_event
         self._on_command_ack = on_command_ack
         self._on_command_lifecycle = on_command_lifecycle
@@ -76,6 +83,11 @@ class BydClient:
     @property
     def config(self) -> BydConfig:
         return self._config
+
+    @property
+    def has_session(self) -> bool:
+        """Return whether the client has a usable token-based session."""
+        return self._session_data.has_tokens
 
     async def __aenter__(self) -> BydClient:
         if self._session_external:
@@ -130,6 +142,11 @@ class BydClient:
             ) as response:
                 if response.status != 200:
                     text = await response.text()
+                    if response.status in (401, 403):
+                        raise BydAuthenticationError(
+                            f"HTTP {response.status} {endpoint}: {text[:200]}",
+                            endpoint=endpoint,
+                        )
                     raise BydTransportError(f"HTTP {response.status} {endpoint}: {text[:200]}")
 
                 body = await response.json(content_type=None)
@@ -214,9 +231,10 @@ class BydClient:
 
         if str(decoded.get("code", "")) != "0":
             msg = decoded.get("message", "Unknown error")
-            if "password" in msg.lower() or "auth" in msg.lower():
-                raise BydAuthenticationError(f"Login failed: {msg}")
-            raise BydApiError(f"Login failed: code={decoded.get('code')} message={msg}", code=str(decoded.get("code", "")))
+            code = str(decoded.get("code", ""))
+            if code in ("1001", "1002", "1003") or "password" in msg.lower() or "auth" in msg.lower():
+                raise BydAuthenticationError(f"Login failed: {msg}", code=code)
+            raise BydApiError(f"Login failed: code={code} message={msg}", code=code)
 
         # Decrypt respondData
         respond_data = self._decrypt_respond_data(decoded.get("respondData", ""), login_key)
@@ -374,7 +392,7 @@ class BydClient:
             vehicle_info, serial = await self._fetch_vehicle_realtime(
                 "/vehicleInfo/vehicle/vehicleRealTimeRequest", vin, is_shared=is_shared,
             )
-        except BydApiError:
+        except (BydApiError, BydAuthenticationError, BydTransportError):
             raise
         except Exception as exc:
             raise BydApiError(f"Realtime request failed: {exc}") from exc
