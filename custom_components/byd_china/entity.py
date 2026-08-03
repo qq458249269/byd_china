@@ -92,20 +92,3 @@ class BydVehicleEntity(CoordinatorEntity[BydDataUpdateCoordinator]):
             return snap.recent_energy if snap is not None else None
         return None
 
-    def _is_vehicle_on(self) -> bool:
-        """Return True when the vehicle is on."""
-        realtime = self._get_realtime()
-        if realtime is None:
-            return False
-        return bool(realtime.is_vehicle_on)
-
-    async def _execute_control(self, command_type: str, control_params: dict | None = None) -> None:
-        """Execute a remote control command via the coordinator."""
-        await self.coordinator.execute_control(command_type, control_params)
-
-    def _build_control_params(self, description: Any) -> dict | None:
-        """Build control parameters from an entity description.
-
-        Override in subclasses that need command-specific parameters.
-        """
-        return None

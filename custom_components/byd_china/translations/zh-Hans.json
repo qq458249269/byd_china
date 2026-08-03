@@ -23,7 +23,7 @@
       "invalid_auth": "手机号或密码错误",
       "account_locked": "账号已被锁定，请稍后重试或联系比亚迪客服",
       "decryption_error": "服务器响应解密失败，集成可能需要更新",
-      "invalid_pin_format": "控制PIN码必须为4-6位数字",
+      "invalid_pin_format": "控制PIN码必须为6位数字",
       "unknown": "意外错误"
     },
     "abort": {
@@ -63,8 +63,8 @@
       "byd_climate": { "name": "空调控制" }
     },
     "number": {
-      "realtime_poll_interval": { "name": "遥测轮询间隔（小时）" },
-      "gps_poll_interval": { "name": "GPS 轮询间隔（小时）" }
+      "realtime_poll_interval": { "name": "遥测轮询间隔（小时，所有车辆）" },
+      "gps_poll_interval": { "name": "GPS 轮询间隔（小时，所有车辆）" }
     },
     "lock": {
       "vehicle_lock": { "name": "门锁" }

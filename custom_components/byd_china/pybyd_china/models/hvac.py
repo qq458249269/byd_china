@@ -7,7 +7,6 @@ from typing import Any, ClassVar
 
 from pydantic import model_validator
 
-from .._constants import celsius_to_scale
 from ..models._base import COMMON_KEY_ALIASES, BydBaseModel, BydEnum, is_temp_sentinel
 from ..models.realtime import AirCirculationMode, SeatHeatVentState, StearingWheelHeat
 
@@ -18,7 +17,6 @@ __all__ = [
     "HvacStatus",
     "HvacWindMode",
     "HvacWindPosition",
-    "celsius_to_scale",
 ]
 
 

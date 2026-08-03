@@ -130,7 +130,9 @@ class BydVehicleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             pin_value = user_input.get(CONF_CONTROL_PIN, "")
-            if not pin_value or not pin_value.isdigit() or len(pin_value) != 6:
+            # Empty PIN is allowed (accounts without a control PIN);
+            # a non-empty PIN must be exactly 6 digits.
+            if pin_value and (not pin_value.isdigit() or len(pin_value) != 6):
                 errors["base"] = "invalid_pin_format"
             else:
                 try:

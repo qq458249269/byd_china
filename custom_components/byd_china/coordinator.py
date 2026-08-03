@@ -12,7 +12,7 @@ from time import perf_counter
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
@@ -20,7 +20,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .pybyd_china.client import BydClient
-from .pybyd_china.config import BydConfig, BydSession, DeviceProfile
+from .pybyd_china.config import BydConfig, DeviceProfile
 from .pybyd_china.exceptions import (
     BydApiError,
     BydAuthenticationError,
@@ -46,8 +46,6 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-_HA_EVENT_COMMAND_LIFECYCLE: str = f"{DOMAIN}_command_lifecycle"
 
 _AUTH_ERRORS = (BydAuthenticationError,)
 _RECOVERABLE_ERRORS = (BydApiError, BydTransportError)
@@ -125,6 +123,7 @@ class BydApi:
             target_brand=entry.data.get(CONF_TARGET_BRAND, DEFAULT_TARGET_BRAND),
         )
         self._client: BydClient | None = None
+        self._client_lock = asyncio.Lock()
         self._debug_dumps_enabled = entry.options.get(
             CONF_DEBUG_DUMPS,
             DEFAULT_DEBUG_DUMPS,
@@ -152,8 +151,23 @@ class BydApi:
                 json.dumps(payload, ensure_ascii=False, indent=2, default=str),
                 encoding="utf-8",
             )
+            self._prune_debug_dumps()
         except Exception:  # noqa: BLE001
             _LOGGER.debug("Failed to write BYD debug dump.", exc_info=True)
+
+    def _prune_debug_dumps(self, keep: int = 50) -> None:
+        """Keep only the newest *keep* dump files per category."""
+        try:
+            categories = {
+                path.name.rsplit("_", 1)[-1]
+                for path in self._debug_dump_dir.glob("*.json")
+            }
+            for category in categories:
+                files = sorted(self._debug_dump_dir.glob(f"*_{category}"))
+                for stale in files[:-keep]:
+                    stale.unlink()
+        except Exception:  # noqa: BLE001
+            _LOGGER.debug("Failed to prune BYD debug dumps.", exc_info=True)
 
     async def _async_write_debug_dump(
         self,
@@ -185,7 +199,11 @@ class BydApi:
         await self._invalidate_client()
 
     async def _ensure_client(self) -> BydClient:
-        if self._client is None:
+        if self._client is not None:
+            return self._client
+        async with self._client_lock:
+            if self._client is not None:
+                return self._client
             _LOGGER.debug(
                 "Creating new pybyd_china client: entry_id=%s",
                 self._entry.entry_id,
@@ -281,71 +299,12 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
         self._pin_verified: bool = False
 
         # Build a Vehicle model from the vehicle_info dict for entity compatibility.
-        # CN API may return Java-style date strings (e.g. "Mon Aug 12 00:00:00 CST 2024")
-        # that BydTimestamp can't parse. We pre-process and also fall back to
-        # manual construction if model_validate still fails.
-        if vehicle_info:
-            vehicle_info = self._preprocess_vehicle_info(vehicle_info)
+        # BydTimestamp handles CN Java-style date strings (e.g. "Mon Aug 12 00:00:00 CST 2024").
         try:
             self._vehicle = Vehicle.model_validate(vehicle_info) if vehicle_info else Vehicle(vin=vin)
         except Exception as exc:
             _LOGGER.warning("Vehicle.model_validate failed, using fallback: %s", exc)
             self._vehicle = self._build_vehicle_fallback(vehicle_info or {}, vin)
-
-        # BydCar is not used in China mode (no state engine / MQTT push),
-        # but entity files reference coordinator.car. Provide a stub.
-        self._car: Any = None
-
-    @staticmethod
-    def _preprocess_vehicle_info(info: dict[str, Any]) -> dict[str, Any]:
-        """Convert CN-specific Java date strings to epoch timestamps.
-
-        The CN API returns dates like "Mon Aug 12 00:00:00 CST 2024" for
-        autoBoughtTime / yunActiveTime, but the pydantic Vehicle model
-        expects epoch integers for BydTimestamp fields. This method converts
-        them in-place before model_validate is called.
-        """
-        import re
-        from datetime import datetime, timedelta, timezone
-
-        result = dict(info)
-        date_fields = {"autoBoughtTime", "yunActiveTime"}
-
-        for field in date_fields:
-            value = result.get(field)
-            if not isinstance(value, str) or not value.strip():
-                continue
-            # Already an epoch number string?
-            try:
-                int(value)
-                continue
-            except ValueError:
-                pass
-            # Parse Java-style date: "Mon Aug 12 00:00:00 CST 2024"
-            try:
-                stripped = value.strip()
-                # CST = China Standard Time (UTC+8)
-                tz_offset = timedelta(hours=8)
-                tz_match = re.search(r'\s+(CST|CTS)\s+', stripped)
-                if tz_match:
-                    stripped = stripped[:tz_match.start()] + " " + stripped[tz_match.end():]
-                else:
-                    cleaned = re.sub(r'\s+[A-Z]{2,4}\s+(\d{4})', r' \1', stripped)
-                    tz_offset = timedelta(0)
-                    stripped = cleaned
-                for fmt in ("%a %b %d %H:%M:%S %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                    try:
-                        dt = datetime.strptime(stripped.strip(), fmt)
-                        utc_dt = dt - tz_offset
-                        epoch = int(utc_dt.timestamp())
-                        result[field] = epoch
-                        break
-                    except ValueError:
-                        continue
-            except Exception:
-                # If parsing fails, remove the field so pydantic uses default
-                result.pop(field, None)
-        return result
 
     @staticmethod
     def _build_vehicle_fallback(info: dict[str, Any], vin: str) -> Vehicle:
@@ -373,28 +332,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
     def vehicle(self) -> Vehicle:
         """Return the Vehicle model for entity compatibility."""
         return self._vehicle
-
-    @property
-    def car(self) -> Any:
-        """Return the BydCar aggregate (stub in China mode).
-
-        In the overseas integration, BydCar provides typed capability
-        namespaces (lock, hvac, seat, etc.) backed by the state engine.
-        In China mode we use BydClient.remote_control() directly, so
-        this returns None. Entity files that call car.lock.lock() etc.
-        are adapted to use coordinator.api instead.
-        """
-        return self._car
-
-    def capability_available(self, key: str) -> bool:
-        """Check if a capability is available.
-
-        For location/GPS, always return True.
-        For control commands, always return False (control removed).
-        """
-        if key in ("location", "gps"):
-            return True
-        return False
 
     @property
     def vehicle_info(self) -> dict[str, Any]:
@@ -519,8 +456,9 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
                 self._vin[-6:],
             )
             return snapshot
-        except _AUTH_ERRORS:
-            raise
+        except _AUTH_ERRORS as exc:
+            await self._api._invalidate_client()
+            raise ConfigEntryAuthFailed(str(exc)) from exc
         except _RECOVERABLE_ERRORS as exc:
             _LOGGER.warning("Telemetry fetch failed (keeping stale data): vin=%s, error=%s", self._vin[-6:], exc)
             return self.data
@@ -554,12 +492,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
         self._force_next_refresh = True
         await self.async_request_refresh()
 
-    async def async_delayed_refresh(self, delay: float = 8.0) -> None:
-        """Refresh after a delay to allow T-BOX to process command and update cloud state."""
-        await asyncio.sleep(delay)
-        self._force_next_refresh = True
-        await self.async_request_refresh()
-
     async def async_refresh_hvac(self) -> None:
         """Fetch HVAC status via get_status_now and merge into current snapshot.
 
@@ -571,14 +503,17 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             _LOGGER.debug("get_status_now raw keys: %s", list(hvac_status_raw.keys()) if isinstance(hvac_status_raw, dict) else type(hvac_status_raw))
             hvac = None
             if isinstance(hvac_status_raw, dict) and hvac_status_raw:
-                output_b64 = hvac_status_raw.get("outputBase64") or hvac_status_raw.get("output")
+                output_b64 = hvac_status_raw.get("outputBase64")
                 if output_b64 and isinstance(output_b64, str):
+                    # outputBase64 is base64-encoded JSON.  Decode it, then wrap
+                    # the inner dict as "statusNow" so HvacStatus._unwrap_status_now
+                    # extracts it (the field names use the same camelCase keys).
                     import base64
                     decoded_json = base64.b64decode(output_b64).decode("utf-8", errors="replace")
-                    hvac_inner = json.loads(decoded_json) if decoded_json else {}
+                    hvac_inner = {"statusNow": json.loads(decoded_json)} if decoded_json else {}
                 else:
                     hvac_inner = hvac_status_raw
-                _LOGGER.debug("get_status_now hvac_inner keys: %s", list(hvac_inner.keys()) if isinstance(hvac_inner, dict) else type(hvac_inner))
+                _LOGGER.debug("get_status_now hvac_inner keys: %s", list(hvac_inner.get("statusNow", {}).keys()) if isinstance(hvac_inner.get("statusNow"), dict) else type(hvac_inner))
                 if isinstance(hvac_inner, dict):
                     hvac = HvacStatus.model_validate(hvac_inner)
             if hvac is not None and self.data is not None:
@@ -594,35 +529,40 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             _LOGGER.debug("async_refresh_hvac failed (non-critical): %s", exc)
 
     async def execute_control(self, command_type: str, control_params: dict | None = None, max_retries: int = 3) -> dict:
-        client = await self._api._ensure_client()
-        vin = self._vin
-        if not self._pin_verified:
-            await client.verify_command_access(vin, is_shared=self._is_shared)
-            self._pin_verified = True
-        await client.remote_awake(vin, is_shared=self._is_shared)
-        for attempt in range(max_retries + 1):
-            result = await client.remote_control(vin, command_type, control_params or {}, is_shared=self._is_shared)
-            code = str(result.get("code", ""))
-            if code == "6024" and attempt < max_retries:
-                _LOGGER.warning("Control rate limited (6024), retrying in 5s... (attempt %d/%d)", attempt + 1, max_retries)
-                await asyncio.sleep(5.0)
-                continue
-            if code not in ("0", "200"):
-                raise UpdateFailed(f"Control command failed: code={code}, message={result.get('message', '')}")
-            request_serial = result.get("respondData")
-            if request_serial:
-                for poll in range(10):
-                    await asyncio.sleep(1.5)
-                    poll_result = await client.remote_control_result(vin, request_serial, is_shared=self._is_shared)
-                    rd = poll_result.get("respondData", {})
-                    if isinstance(rd, dict):
-                        state = rd.get("controlState")
-                        if state == 1:
-                            return rd
-                        if state == 2:
-                            raise UpdateFailed(f"Control failed: {rd}")
-            return result
-        raise UpdateFailed("Control command failed after max retries")
+        try:
+            client = await self._api._ensure_client()
+            vin = self._vin
+            if not self._pin_verified:
+                await client.verify_command_access(vin, is_shared=self._is_shared)
+                self._pin_verified = True
+            await client.remote_awake(vin, is_shared=self._is_shared)
+            for attempt in range(max_retries + 1):
+                result = await client.remote_control(vin, command_type, control_params or {}, is_shared=self._is_shared)
+                code = str(result.get("code", ""))
+                if code == "6024" and attempt < max_retries:
+                    _LOGGER.warning("Control rate limited (6024), retrying in 5s... (attempt %d/%d)", attempt + 1, max_retries)
+                    await asyncio.sleep(5.0)
+                    continue
+                if code not in ("0", "200"):
+                    raise UpdateFailed(f"Control command failed: code={code}, message={result.get('message', '')}")
+                request_serial = result.get("respondData")
+                if request_serial:
+                    for poll in range(10):
+                        await asyncio.sleep(1.5)
+                        poll_result = await client.remote_control_result(vin, request_serial, is_shared=self._is_shared)
+                        rd = poll_result.get("respondData", {})
+                        if isinstance(rd, dict):
+                            state = rd.get("controlState")
+                            if state == 1:
+                                return rd
+                            if state == 2:
+                                raise UpdateFailed(f"Control failed: {rd}")
+                    raise UpdateFailed("Control command result timed out")
+                return result
+            raise UpdateFailed("Control command failed after max retries")
+        except BydAuthenticationError as exc:
+            await self._api._invalidate_client()
+            raise ConfigEntryAuthFailed(str(exc)) from exc
 
 
 class BydGpsUpdateCoordinator(DataUpdateCoordinator[GpsInfo | None]):
@@ -715,8 +655,9 @@ class BydGpsUpdateCoordinator(DataUpdateCoordinator[GpsInfo | None]):
                 self._vin[-6:],
             )
             return gps
-        except _AUTH_ERRORS:
-            raise
+        except _AUTH_ERRORS as exc:
+            await self._api._invalidate_client()
+            raise ConfigEntryAuthFailed(str(exc)) from exc
         except _RECOVERABLE_ERRORS as exc:
             _LOGGER.warning("GPS fetch failed: vin=%s, error=%s", self._vin, exc)
             return self.data

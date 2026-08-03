@@ -17,8 +17,6 @@ from .config import (
     BydConfig,
     BydSession,
     DeviceProfile,
-    CN_BROKER_FIELDS,
-    CN_MQTT_PREFIXES,
 )
 from .crypto import (
     aes_decrypt_utf8,
@@ -60,7 +58,6 @@ class BydClient:
         self._session_external = session
         self._session_internal: aiohttp.ClientSession | None = None
         self._session_data = BydSession()
-        self._cookie_jar: dict[str, str] = {}
         self._on_mqtt_event = on_mqtt_event
         self._on_command_ack = on_command_ack
         self._on_command_lifecycle = on_command_lifecycle
@@ -96,15 +93,6 @@ class BydClient:
         if self._session_internal is None:
             raise RuntimeError("Client not initialized. Use async with.")
         return self._session_internal
-
-    # -----------------------------------------------------------------------
-    # Cookie management
-    # -----------------------------------------------------------------------
-
-    def _update_cookies(self, headers: dict) -> None:
-        """Extract set-cookie headers and store in jar."""
-        # aiohttp handles cookies via cookie_jar on the session
-        pass  # aiohttp's CookieJar handles this automatically
 
     # -----------------------------------------------------------------------
     # HTTP request with WBSK encryption
@@ -312,22 +300,26 @@ class BydClient:
         """Check if realtime data contains meaningful values."""
         if not vehicle_info or not isinstance(vehicle_info, dict):
             return False
-        # onlineState === 2 means offline, data not usable
-        if int(vehicle_info.get("onlineState", 0)) == 2:
+        try:
+            # onlineState === 2 means offline, data not usable
+            if int(vehicle_info.get("onlineState", 0)) == 2:
+                return False
+            # Has tire pressure data?
+            tire_fields = [
+                "leftFrontTirepressure", "rightFrontTirepressure",
+                "leftRearTirepressure", "rightRearTirepressure",
+            ]
+            if any(float(vehicle_info.get(f, 0)) > 0 for f in tire_fields):
+                return True
+            # Has timestamp?
+            if int(vehicle_info.get("time", 0)) > 0:
+                return True
+            # Has endurance mileage?
+            if float(vehicle_info.get("enduranceMileage", 0)) > 0:
+                return True
+        except (TypeError, ValueError):
+            # Unparseable values (e.g. "N/A") mean data is not usable yet.
             return False
-        # Has tire pressure data?
-        tire_fields = [
-            "leftFrontTirepressure", "rightFrontTirepressure",
-            "leftRearTirepressure", "rightRearTirepressure",
-        ]
-        if any(float(vehicle_info.get(f, 0)) > 0 for f in tire_fields):
-            return True
-        # Has timestamp?
-        if int(vehicle_info.get("time", 0)) > 0:
-            return True
-        # Has endurance mileage?
-        if float(vehicle_info.get("enduranceMileage", 0)) > 0:
-            return True
         return False
 
     async def _fetch_vehicle_realtime(
@@ -453,49 +445,6 @@ class BydClient:
         return data
 
     # -----------------------------------------------------------------------
-    # MQTT broker
-    # -----------------------------------------------------------------------
-
-    async def get_emq_broker(self) -> str:
-        """Get MQTT broker hostname."""
-        now_ms = int(time.time() * 1000)
-        inner = self._build_inner(now_ms)
-        inner["version"] = self._config.cn_app_inner_version
-
-        req = self._build_token_outer_envelope(now_ms, inner)
-        decoded = await self._post_secure("/app/emqAuth/getEmqBrokerIp", req["outer"])
-
-        if str(decoded.get("code", "")) != "0":
-            raise BydApiError(f"Broker lookup failed: code={decoded.get('code')} message={decoded.get('message', '')}")
-
-        data = self._decrypt_respond_data(decoded.get("respondData", ""), req["content_key"])
-
-        broker_field = CN_BROKER_FIELDS.get(self._config.target_brand, "dynastyEmqBroker")
-        broker = str(data.get(broker_field, "")) if data else ""
-
-        if not broker:
-            raise BydApiError(f"Broker lookup response missing broker (brand={self._config.target_brand})")
-
-        return broker
-
-    def get_mqtt_params(self) -> dict[str, str]:
-        """Build MQTT connection parameters."""
-        prefix = CN_MQTT_PREFIXES.get(self._config.target_brand, "dynasty")
-        client_id = f"{prefix}_{self._device.imei_md5.upper()}"
-        ts_seconds = str(int(time.time()))
-        uid = self._session_data.super_id or self._session_data.user_id
-        base = f"{self._session_data.sign_token}{client_id}{uid}{ts_seconds}"
-        password = f"{ts_seconds}{md5_hex(base)}"
-        topic = f"/{prefix}/res/{uid}"
-
-        return {
-            "client_id": client_id,
-            "username": uid,
-            "password": password,
-            "topic": topic,
-        }
-
-    # -----------------------------------------------------------------------
     # Verify control password
     # -----------------------------------------------------------------------
 
@@ -561,7 +510,7 @@ class BydClient:
             "controlParamsMap": json.dumps(control_params or {}, separators=(",", ":")),
             "commandPwd": command_pwd,
             "asyncControl": "0",
-            "requestSerial": str(now_ms % 10000),
+            "requestSerial": str(now_ms % 100000),
             "source": "app",
             "tboxVersion": self._config.tbox_version,
         }

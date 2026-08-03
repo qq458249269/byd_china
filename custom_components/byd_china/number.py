@@ -80,7 +80,11 @@ class BydPollIntervalNumberMixin:
 
 
 class BydRealtimePollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, NumberEntity):
-    """Runtime-configurable realtime polling interval (hours)."""
+    """Runtime-configurable realtime polling interval (hours).
+
+    The interval is an entry-level setting: changing it on any vehicle's
+    entity applies to every vehicle in the account (persisted in entry options).
+    """
 
     _attr_translation_key = "realtime_poll_interval"
     _attr_native_min_value = MIN_POLL_INTERVAL / 3600
@@ -95,12 +99,12 @@ class BydRealtimePollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(coordinator)
         self.hass = hass
         self._entry = entry
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_number_realtime_poll_interval"
+        super().__init__(coordinator)
 
     @property
     def native_value(self) -> float:
@@ -112,6 +116,7 @@ class BydRealtimePollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin
         interval = _hours_to_sec(value)
         interval = max(MIN_POLL_INTERVAL, min(MAX_POLL_INTERVAL, interval))
 
+        # Entry-level setting: apply to every vehicle in this account.
         entry_data = self.hass.data[DOMAIN][self._entry.entry_id]
         for coordinator in entry_data["coordinators"].values():
             coordinator.set_poll_interval(interval)
@@ -123,7 +128,11 @@ class BydRealtimePollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin
 
 
 class BydGpsPollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, NumberEntity):
-    """Runtime-configurable GPS polling interval (hours)."""
+    """Runtime-configurable GPS polling interval (hours).
+
+    The interval is an entry-level setting: changing it on any vehicle's
+    entity applies to every vehicle in the account (persisted in entry options).
+    """
 
     _attr_translation_key = "gps_poll_interval"
     _attr_native_min_value = MIN_GPS_POLL_INTERVAL / 3600
@@ -139,13 +148,13 @@ class BydGpsPollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, Num
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(coordinator)
         self.hass = hass
         self._entry = entry
         self._gps_coordinator = gps_coordinator
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_number_gps_poll_interval"
+        super().__init__(coordinator)
 
     @property
     def native_value(self) -> float:
@@ -157,6 +166,7 @@ class BydGpsPollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, Num
         interval = _hours_to_sec(value)
         interval = max(MIN_GPS_POLL_INTERVAL, min(MAX_GPS_POLL_INTERVAL, interval))
 
+        # Entry-level setting: apply to every vehicle in this account.
         entry_data = self.hass.data[DOMAIN][self._entry.entry_id]
         for gps_coordinator in entry_data["gps_coordinators"].values():
             gps_coordinator.set_poll_interval(interval)

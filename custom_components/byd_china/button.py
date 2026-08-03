@@ -64,17 +64,18 @@ class BydButton(BydVehicleEntity, ButtonEntity):
         vehicle: Vehicle,
         description: BydButtonDescription,
     ) -> None:
-        super().__init__(coordinator)
         self.entity_description = description
         self._attr_translation_key = description.key
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_button_{description.key}"
+        super().__init__(coordinator)
 
     async def async_press(self) -> None:
         try:
+            # execute_control internally polls remoteControlResult until the
+            # cloud confirms the command; no follow-up state refresh here.
             await self.coordinator.execute_control(self.entity_description.command_type)
-            await self.coordinator.async_delayed_refresh()
         except Exception as exc:
             _LOGGER.error("Button command %s failed: %s", self.entity_description.command_type, exc)
             raise

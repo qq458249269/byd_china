@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.lock import LockEntity, LockEntityDescription
+from homeassistant.components.lock import LockEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -47,10 +47,10 @@ class BydLock(BydVehicleEntity, LockEntity):
         vin: str,
         vehicle: Vehicle,
     ) -> None:
-        super().__init__(coordinator)
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_lock"
+        super().__init__(coordinator)
 
     def _get_lock_states(self) -> list[LockState] | None:
         """Return list of door lock states from realtime data, or None if unknown."""
@@ -77,8 +77,10 @@ class BydLock(BydVehicleEntity, LockEntity):
     async def async_lock(self, **kwargs: Any) -> None:
         _LOGGER.debug("Locking all doors: vin=%s", self._vin[-6:])
         try:
+            # execute_control internally polls remoteControlResult until the
+            # cloud confirms the command; the lock state itself is only
+            # refreshed by the low-frequency telemetry poll.
             await self.coordinator.execute_control("LOCKDOOR")
-            await self.coordinator.async_delayed_refresh()
         except Exception as exc:
             _LOGGER.error("Lock command failed: %s", exc)
             raise
@@ -87,7 +89,6 @@ class BydLock(BydVehicleEntity, LockEntity):
         _LOGGER.debug("Unlocking all doors: vin=%s", self._vin[-6:])
         try:
             await self.coordinator.execute_control("OPENDOOR")
-            await self.coordinator.async_delayed_refresh()
         except Exception as exc:
             _LOGGER.error("Unlock command failed: %s", exc)
             raise
