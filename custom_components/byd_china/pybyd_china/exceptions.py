@@ -14,6 +14,13 @@ class BydAuthenticationError(BydError):
         self.endpoint = endpoint
 
 
+class BydSessionExpiredError(BydAuthenticationError):
+    """Session/token expired or invalidated (code 22 — account logged in elsewhere).
+
+    Callers should re-login and retry once with a fresh token envelope.
+    """
+
+
 class BydControlPasswordError(BydError):
     """Control PIN verification failed."""
 

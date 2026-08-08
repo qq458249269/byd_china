@@ -1,0 +1,61 @@
+name: Pre-release on main push
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package and pre-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --tags --force
+
+      - name: Compute daily increment version
+        id: calc
+        run: |
+          DAY=$(date +%Y.%m.%d)
+          LAST=$(git tag --list | grep -E "^${DAY}\." | sed -E "s/^${DAY}\.//" | sort -n | tail -n 1)
+          if [ -z "$LAST" ]; then LAST=0; fi
+          VERSION="${DAY}.$((LAST + 1))"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "generated version $VERSION"
+
+      - name: Align manifest version
+        run: |
+          python3 - "$VERSION" <<'EOF'
+          import json, sys
+          path = "custom_components/byd_china/manifest.json"
+          data = json.load(open(path, encoding="utf-8"))
+          data["version"] = sys.argv[1]
+          json.dump(data, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+          EOF
+        env:
+          VERSION: ${{ steps.calc.outputs.version }}
+
+      - name: Package component
+        run: |
+          find custom_components/byd_china -name "__pycache__" -type d -prune -exec rm -rf {} +
+          find custom_components/byd_china -name "*.pyc" -delete
+          cd custom_components
+          zip -r ../byd_china.zip byd_china
+
+      - name: Create pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.calc.outputs.version }}
+          name: v${{ steps.calc.outputs.version }}
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: byd_china.zip

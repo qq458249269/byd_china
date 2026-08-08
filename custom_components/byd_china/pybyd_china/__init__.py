@@ -10,6 +10,7 @@ from .exceptions import (
     BydControlPasswordError,
     BydDecryptionError,
     BydError,
+    BydSessionExpiredError,
     BydTransportError,
 )
 from ._state_engine import VehicleSnapshot
@@ -27,6 +28,7 @@ __all__ = [
     "BydControlPasswordError",
     "BydDecryptionError",
     "BydError",
+    "BydSessionExpiredError",
     "BydTransportError",
     "BydSession",
     "DeviceProfile",

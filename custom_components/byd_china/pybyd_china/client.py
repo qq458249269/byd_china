@@ -6,6 +6,8 @@ and remote control commands for the CN BYD app.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 import logging
 import time
@@ -32,6 +34,7 @@ from .exceptions import (
     BydApiError,
     BydAuthenticationError,
     BydDecryptionError,
+    BydSessionExpiredError,
     BydTransportError,
 )
 from .wbsk import decrypt_envelope, encrypt_envelope
@@ -61,6 +64,9 @@ class BydClient:
         self._on_mqtt_event = on_mqtt_event
         self._on_command_ack = on_command_ack
         self._on_command_lifecycle = on_command_lifecycle
+        # Guards auto re-login so concurrent fans-out requests share the same
+        # fresh session instead of each re-login individually.
+        self._relogin_lock = asyncio.Lock()
         # If an external session is provided, use it immediately without
         # requiring async with. This allows HA's coordinator to create a
         # client and call methods directly.
@@ -98,8 +104,37 @@ class BydClient:
     # HTTP request with WBSK encryption
     # -----------------------------------------------------------------------
 
+    def _retry_on_session_expired(func: Any) -> Any:
+        """Re-login and retry once when the API reports a dead session (code 22).
+
+        Use on public client methods only. The request is fully rebuilt after
+        re-login because the token-envelope signature derives from the session
+        keys that changed on re-login.
+        """
+
+        @functools.wraps(func)
+        async def wrapper(self: "BydClient", *args: Any, **kwargs: Any) -> Any:
+            try:
+                return await func(self, *args, **kwargs)
+            except BydSessionExpiredError as exc:
+                async with self._relogin_lock:
+                    # Another concurrent call already re-logged in; retry once
+                    # with the refreshed session.
+                    try:
+                        await self.login()
+                    except Exception:  # noqa: BLE001
+                        raise
+                    _LOGGER.warning("Session expired (code 22): %s — re-logged in, retrying", exc)
+                    return await func(self, *args, **kwargs)
+        return wrapper
+
     async def _post_secure(self, endpoint: str, outer_payload: dict[str, Any]) -> dict[str, Any]:
-        """Send an encrypted POST request and decrypt the response."""
+        """Send an encrypted POST request and decrypt the response.
+
+        Raises BydSessionExpiredError when the API reports a dead session
+        (code 22 — credentials invalidated, e.g. account logged in elsewhere).
+        Public methods catch this via _retry_on_session_expired.
+        """
         session = self._get_session()
 
         headers = {
@@ -141,10 +176,18 @@ class BydClient:
 
         # Decrypt response with WBSK
         try:
-            decoded_text = decrypt_envelope(body["response"])
-            return json.loads(decoded_text)
+            decoded_response = decrypt_envelope(body["response"])
+            decoded = json.loads(decoded_response)
         except (ValueError, json.JSONDecodeError) as err:
             raise BydDecryptionError(f"Failed to decrypt response from {endpoint}: {err}") from err
+
+        # Dead session (code 22) → fail the call; wrapper re-logins and retries.
+        if str(decoded.get("code", "")) == "22":
+            raise BydSessionExpiredError(
+                "Session expired: " + str(decoded.get("message", "")), code="22", endpoint=endpoint
+            )
+
+        return decoded
 
     # -----------------------------------------------------------------------
     # Login
@@ -265,6 +308,7 @@ class BydClient:
     # Vehicle list
     # -----------------------------------------------------------------------
 
+    @_retry_on_session_expired
     async def get_vehicles(self) -> list[dict[str, Any]]:
         """Get list of vehicles for the authenticated user."""
         now_ms = int(time.time() * 1000)
@@ -357,6 +401,7 @@ class BydClient:
             next_serial = request_serial
         return vehicle_info, next_serial
 
+    @_retry_on_session_expired
     async def get_vehicle_realtime(self, vin: str, *, is_shared: bool = False) -> dict[str, Any]:
         """Get realtime vehicle telemetry (CN: request + result polling).
 
@@ -374,6 +419,8 @@ class BydClient:
             vehicle_info, serial = await self._fetch_vehicle_realtime(
                 "/vehicleInfo/vehicle/vehicleRealTimeRequest", vin, is_shared=is_shared,
             )
+        except BydSessionExpiredError:
+            raise
         except BydApiError:
             raise
         except Exception as exc:
@@ -404,6 +451,8 @@ class BydClient:
                 if self._is_realtime_data_ready(vehicle_info):
                     _LOGGER.debug("Realtime data ready after %d poll attempts", attempt)
                     return vehicle_info
+            except BydSessionExpiredError:
+                raise
             except BydApiError as exc:
                 _LOGGER.debug("Realtime result poll attempt %d failed: %s", attempt, exc)
             except Exception as exc:
@@ -416,6 +465,7 @@ class BydClient:
     # GPS (CN: single request, no polling)
     # -----------------------------------------------------------------------
 
+    @_retry_on_session_expired
     async def get_gps(self, vin: str, *, is_shared: bool = False) -> dict[str, Any]:
         """Get GPS location (CN single-request endpoint).
 
@@ -448,6 +498,7 @@ class BydClient:
     # Verify control password
     # -----------------------------------------------------------------------
 
+    @_retry_on_session_expired
     async def verify_command_access(self, vin: str, *, is_shared: bool = False) -> None:
         """Verify the control PIN for remote commands."""
         if not self._config.control_pin:
@@ -481,6 +532,7 @@ class BydClient:
     # Remote control
     # -----------------------------------------------------------------------
 
+    @_retry_on_session_expired
     async def remote_awake(self, vin: str, *, is_shared: bool = False) -> dict[str, Any]:
         """Send remote awake command."""
         now_ms = int(time.time() * 1000)
@@ -497,6 +549,7 @@ class BydClient:
         data = self._decrypt_respond_data(decoded.get("respondData", ""), req["content_key"])
         return data if isinstance(data, dict) else {}
 
+    @_retry_on_session_expired
     async def remote_control(self, vin: str, command_type: str, control_params: dict[str, Any] | None = None, *, is_shared: bool = False) -> dict[str, Any]:
         """Send a remote control command."""
         now_ms = int(time.time() * 1000)
@@ -529,6 +582,7 @@ class BydClient:
             return {"code": decoded.get("code", ""), "respondData": data}
         return {"code": decoded.get("code", ""), "message": decoded.get("message", ""), "respondData": None}
 
+    @_retry_on_session_expired
     async def get_status_now(self, vin: str, *, is_shared: bool = False) -> dict[str, Any]:
         """Get current A/C status via getStatusNow endpoint.
 
@@ -549,6 +603,7 @@ class BydClient:
         data = self._decrypt_respond_data(decoded.get("respondData", ""), req["content_key"])
         return data if isinstance(data, dict) else {}
 
+    @_retry_on_session_expired
     async def get_historical_data_by_vin(self, vin: str, *, is_shared: bool = False, auto_type: str = "1") -> dict[str, Any]:
         """Get recent 50km energy consumption detail (selfList with per-day data)."""
         now_ms = int(time.time() * 1000)
@@ -574,6 +629,7 @@ class BydClient:
         data = self._decrypt_respond_data(resp, req["content_key"])
         return data if isinstance(data, dict) else {}
 
+    @_retry_on_session_expired
     async def get_recent_data_by_vin(self, vin: str, *, is_shared: bool = False, auto_type: str = "1") -> dict[str, Any]:
         """Get cumulative energy consumption (avgFullCon, avgEvCon, avgOilCon, etc.).
 
@@ -604,6 +660,7 @@ class BydClient:
         data = self._decrypt_respond_data(resp, req["content_key"])
         return data if isinstance(data, dict) else {}
 
+    @_retry_on_session_expired
     async def remote_control_result(self, vin: str, request_serial: str, *, is_shared: bool = False) -> dict[str, Any]:
         """Poll for remote control result."""
         now_ms = int(time.time() * 1000)
