@@ -6,13 +6,13 @@
 
 _SCALE_MIN = 1
 _SCALE_MAX = 17
-_OFFSET_C = 14.0
-_TEMP_MIN_C = _OFFSET_C + _SCALE_MIN  # 15.0
-_TEMP_MAX_C = _OFFSET_C + _SCALE_MAX  # 31.0
+_OFFSET_C = 16.0
+_TEMP_MIN_C = _OFFSET_C + _SCALE_MIN  # 17.0
+_TEMP_MAX_C = _OFFSET_C + _SCALE_MAX  # 33.0
 
 
 def celsius_to_scale(temp_c: float) -> int:
-    """Convert a °C temperature (15-31) to BYD's climate scale (1-17).
+    """Convert a °C temperature (17-33) to BYD's climate scale (1-17).
 
     Raises :class:`ValueError` if *temp_c* is outside the supported range.
     """

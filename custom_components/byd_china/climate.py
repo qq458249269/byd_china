@@ -26,10 +26,10 @@ from .pybyd_china._constants import celsius_to_scale
 
 _LOGGER = logging.getLogger(__name__)
 
-BYD_TEMP_MIN = 15
-BYD_TEMP_MAX = 31
+BYD_TEMP_MIN = 17
+BYD_TEMP_MAX = 33
 BYD_TEMP_STEP = 1.0
-BYD_TEMP_OFFSET = 14
+BYD_TEMP_OFFSET = 16
 
 CYCLE_MODE_EXTERNAL = 1
 CYCLE_MODE_INTERNAL = 2
@@ -188,8 +188,8 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
             return None
         if v <= 0:
             return None
-        if v <= 17:
-            # BYD scale value (1-17): 15-31 deg C.
+        if v <= BYD_TEMP_OFFSET + 1:
+            # BYD scale value (1-17): offset 16 -> 17-33 deg C.
             return v + BYD_TEMP_OFFSET
         return v
 
@@ -323,7 +323,7 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
 
         params = self._build_ac_params()
         self._optimistic_mode = HVACMode.HEAT_COOL
-        self._optimistic_temp = params.get("_display_temp", 25.0)
+        self._optimistic_temp = params.get("_display_temp") or self._cloud_target_temp()
         self._optimistic_until = _time.time() + 30
         self.async_write_ha_state()
         try:
@@ -405,16 +405,18 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         fan_mode_str: str | None = None,
         time_span: int | None = None,
     ) -> dict[str, Any]:
-        if temperature is None:
-            temperature = self.target_temperature or 25.0
-        # BYD scale (1-17) offset by 14 = °C.  celsius_to_scale validates
-        # the 15-31 °C range and clamps within the supported scale.
-        try:
-            byd_temp = celsius_to_scale(temperature)
-        except ValueError:
-            raise ValueError(
-                f"空调温度超出支持范围（15-31°C）：{temperature}"
-            ) from None
+        # temperature=None: omit the temp fields so the car keeps its current
+        # set temperature (matches the OPENAIR button which sends no params).
+        byd_temp = None
+        if temperature is not None:
+            # BYD scale (1-17) offset by 16 = °C.  celsius_to_scale validates
+            # the 17-33 °C range and clamps within the supported scale.
+            try:
+                byd_temp = celsius_to_scale(temperature)
+            except ValueError:
+                raise ValueError(
+                    f"空调温度超出支持范围（17-33°C）：{temperature}"
+                ) from None
 
         if cycle_mode is None:
             preset = self.preset_mode
@@ -433,15 +435,17 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         if time_span is None:
             time_span = self._optimistic_timespan
 
-        return {
-            "mainSettingTemp": byd_temp,
-            "copilotSettingTemp": byd_temp,
+        params: dict[str, Any] = {
             "cycleMode": cycle_mode,
             "remoteMode": 4,
             "windLevel": wind_level,
             "timeSpan": time_span,
-            "_display_temp": temperature,
         }
+        if byd_temp is not None:
+            params["mainSettingTemp"] = byd_temp
+            params["copilotSettingTemp"] = byd_temp
+            params["_display_temp"] = temperature
+        return params
 
     @callback
     def _handle_coordinator_update(self) -> None:
