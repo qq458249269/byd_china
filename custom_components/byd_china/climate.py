@@ -339,6 +339,9 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         temperature = kwargs.get(ATTR_TEMPERATURE)
         if temperature is None:
             return
+        if not (BYD_TEMP_MIN <= temperature <= BYD_TEMP_MAX):
+            _LOGGER.warning("忽略非法空调温度设置 %s（支持 %s-%s°C）", temperature, BYD_TEMP_MIN, BYD_TEMP_MAX)
+            return
         params = self._build_ac_params(temperature=temperature)
         self._optimistic_mode = HVACMode.HEAT_COOL
         self._optimistic_temp = temperature
@@ -405,18 +408,24 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         fan_mode_str: str | None = None,
         time_span: int | None = None,
     ) -> dict[str, Any]:
-        # temperature=None: omit the temp fields so the car keeps its current
-        # set temperature (matches the OPENAIR button which sends no params).
+        # temperature=None: prefer the cloud's current set temp so the car
+        # keeps its setting instead of resetting; fall back to 25°C when the
+        # cloud hasn't reported a valid temperature.
         byd_temp = None
         if temperature is not None:
-            # BYD scale (1-17) offset by 16 = °C.  celsius_to_scale validates
-            # the 17-33 °C range and clamps within the supported scale.
             try:
                 byd_temp = celsius_to_scale(temperature)
             except ValueError:
                 raise ValueError(
                     f"空调温度超出支持范围（17-33°C）：{temperature}"
                 ) from None
+        else:
+            try:
+                byd_temp = celsius_to_scale(self._cloud_target_temp())
+            except (ValueError, TypeError):
+                # Cloud temp missing or out of range → use a sane default so
+                # the OPENAIR command always carries a valid temperature.
+                byd_temp = celsius_to_scale(25.0)
 
         if cycle_mode is None:
             preset = self.preset_mode
@@ -444,7 +453,9 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         if byd_temp is not None:
             params["mainSettingTemp"] = byd_temp
             params["copilotSettingTemp"] = byd_temp
-            params["_display_temp"] = temperature
+            # Store the degrees actually sent, so optimistic state reflects the
+            # command even when it fell back to the cloud's or 25°C default.
+            params["_display_temp"] = float(byd_temp) + BYD_TEMP_OFFSET
         return params
 
     @callback
