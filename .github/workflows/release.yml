@@ -43,6 +43,19 @@ jobs:
         env:
           VERSION: ${{ steps.calc.outputs.version }}
 
+      - name: Sync manifest version back to master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/byd_china/manifest.json
+          git commit -m "chore: sync manifest version to $VERSION [skip ci]"
+          # Rebase on any commits pushed while this workflow ran, then push
+          # back. "[skip ci]" in the message stops this push from retriggering.
+          git pull --rebase origin master
+          git push origin master
+        env:
+          VERSION: ${{ steps.calc.outputs.version }}
+
       - name: Package component
         run: |
           find custom_components/byd_china -name "__pycache__" -type d -prune -exec rm -rf {} +
