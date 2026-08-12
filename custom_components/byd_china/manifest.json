@@ -1,12 +1,16 @@
 {
   "domain": "byd_china",
   "name": "BYD China",
-  "codeowners": ["@qq458249269"],
+  "codeowners": [
+    "@qq458249269"
+  ],
   "config_flow": true,
   "documentation": "https://github.com/qq458249269/byd_china",
   "issue_tracker": "https://github.com/qq458249269/byd_china/issues",
   "iot_class": "cloud_polling",
-  "requirements": ["pycryptodome"],
-  "version": "1.0.7",
+  "requirements": [
+    "pycryptodome"
+  ],
+  "version": "2026.08.12.5",
   "icon": "mdi:car-electric"
 }
