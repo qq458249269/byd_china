@@ -22,7 +22,7 @@ from .pybyd_china.models.vehicle import Vehicle
 from .const import DOMAIN
 from .coordinator import BydDataUpdateCoordinator
 from .entity import BydVehicleEntity
-from .pybyd_china._constants import celsius_to_scale
+from .pybyd_china._constants import celsius_to_scale, scale_to_celsius
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -182,20 +182,13 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         return None
 
     def _decode_temp(self, raw: Any) -> float | None:
-        """Decode a BYD scale temperature (1-17 -> 17-33 °C).
+        """Decode a BYD scale temperature (1-17 → 17-33 °C).
 
         ``main_setting_temp`` is always scale; precise degrees come from
-        ``main_setting_temp_new``. Treating every value <= 17 as scale
-        removes the old scale/°C ambiguity.
+        ``main_setting_temp_new``. Treating every value as scale removes the
+        old scale/°C ambiguity (a raw °C of 17 previously decoded as 33 °C).
         """
-        try:
-            v = float(raw)
-        except (TypeError, ValueError):
-            return None
-        # Valid scale range: 1-17 (scale 1 = 17 °C, scale 17 = 33 °C).
-        if BYD_TEMP_MAX - BYD_TEMP_OFFSET >= v >= BYD_TEMP_MIN - BYD_TEMP_OFFSET:
-            return v + BYD_TEMP_OFFSET
-        return None
+        return scale_to_celsius(raw)
 
     def _cloud_cycle_mode(self) -> int | None:
         snap = self._snapshot()
