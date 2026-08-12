@@ -11,6 +11,6 @@
   "requirements": [
     "pycryptodome"
   ],
-  "version": "2026.08.12.5",
+  "version": "2026.08.12.6",
   "icon": "mdi:car-electric"
 }
