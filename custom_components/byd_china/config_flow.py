@@ -48,8 +48,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     session = async_get_clientsession(hass)
-    country_code, language, base_url = get_country_connection_settings("China")
-    time_zone = hass.config.time_zone or "UTC"
+    _, _, base_url = get_country_connection_settings("China")
     target_brand = data.get(CONF_TARGET_BRAND, DEFAULT_TARGET_BRAND)
 
     device_profile_dict = data.get(CONF_DEVICE_PROFILE)
@@ -62,9 +61,6 @@ async def _validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
         username=data["username"],
         password=data["password"],
         base_url=base_url,
-        country_code=country_code,
-        language=language,
-        time_zone=time_zone,
         target_brand=target_brand,
     )
     async with BydClient(config, device_profile, session=session) as client:
@@ -211,9 +207,7 @@ class BydVehicleConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_COUNTRY_CODE: country_code,
                             CONF_LANGUAGE: language,
                             CONF_TARGET_BRAND: user_input.get(CONF_TARGET_BRAND, DEFAULT_TARGET_BRAND),
-                            CONF_DEVICE_PROFILE: await async_generate_device_profile(
-                                self.hass
-                            ),
+                            CONF_DEVICE_PROFILE: user_input[CONF_DEVICE_PROFILE],
                         },
                         options={
                             CONF_POLL_INTERVAL: DEFAULT_POLL_INTERVAL,

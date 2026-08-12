@@ -182,16 +182,20 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         return None
 
     def _decode_temp(self, raw: Any) -> float | None:
+        """Decode a BYD scale temperature (1-17 -> 17-33 °C).
+
+        ``main_setting_temp`` is always scale; precise degrees come from
+        ``main_setting_temp_new``. Treating every value <= 17 as scale
+        removes the old scale/°C ambiguity.
+        """
         try:
             v = float(raw)
         except (TypeError, ValueError):
             return None
-        if v <= 0:
-            return None
-        if v <= BYD_TEMP_OFFSET + 1:
-            # BYD scale value (1-17): offset 16 -> 17-33 deg C.
+        # Valid scale range: 1-17 (scale 1 = 17 °C, scale 17 = 33 °C).
+        if BYD_TEMP_MAX - BYD_TEMP_OFFSET >= v >= BYD_TEMP_MIN - BYD_TEMP_OFFSET:
             return v + BYD_TEMP_OFFSET
-        return v
+        return None
 
     def _cloud_cycle_mode(self) -> int | None:
         snap = self._snapshot()

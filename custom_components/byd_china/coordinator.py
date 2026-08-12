@@ -34,13 +34,10 @@ from .pybyd_china._state_engine import VehicleSnapshot
 
 from .const import (
     CONF_BASE_URL,
-    CONF_COUNTRY_CODE,
     CONF_DEBUG_DUMPS,
     CONF_DEVICE_PROFILE,
-    CONF_LANGUAGE,
     CONF_TARGET_BRAND,
     DEFAULT_DEBUG_DUMPS,
-    DEFAULT_LANGUAGE,
     DEFAULT_TARGET_BRAND,
     DOMAIN,
 )
@@ -109,16 +106,12 @@ class BydApi:
         self._hass = hass
         self._entry = entry
         self._http_session = session
-        time_zone = hass.config.time_zone or "UTC"
         device_data = entry.data.get(CONF_DEVICE_PROFILE, {})
         self._device = DeviceProfile(**device_data) if device_data else DeviceProfile()
         self._config = BydConfig(
             username=entry.data["username"],
             password=entry.data["password"],
             base_url=entry.data[CONF_BASE_URL],
-            country_code=entry.data.get(CONF_COUNTRY_CODE, "CN"),
-            language=entry.data.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
-            time_zone=time_zone,
             control_pin=entry.data.get("control_pin"),
             target_brand=entry.data.get(CONF_TARGET_BRAND, DEFAULT_TARGET_BRAND),
         )
@@ -478,16 +471,6 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
             self.update_interval = self._fixed_interval
         self.async_update_listeners()
 
-    def set_polling_enabled(self, enabled: bool) -> bool:
-        was_enabled = self._polling_enabled
-        self._polling_enabled = bool(enabled)
-        self.update_interval = self._fixed_interval if self._polling_enabled else None
-        return not was_enabled and self._polling_enabled
-
-    async def async_set_polling_enabled(self, enabled: bool) -> None:
-        if self.set_polling_enabled(enabled):
-            await self.async_request_refresh()
-
     async def async_force_refresh(self) -> None:
         self._force_next_refresh = True
         await self.async_request_refresh()
@@ -521,7 +504,14 @@ class BydDataUpdateCoordinator(DataUpdateCoordinator[VehicleSnapshot | None]):
                     vehicle=self.data.vehicle,
                     realtime=self.data.realtime,
                     hvac=hvac,
+                    gps=self.data.gps,
+                    charging=self.data.charging,
+                    energy=self.data.energy,
                     is_shared=self._is_shared,
+                    gps_wgs84_latitude=self.data.gps_wgs84_latitude,
+                    gps_wgs84_longitude=self.data.gps_wgs84_longitude,
+                    historical_energy=self.data.historical_energy,
+                    recent_energy=self.data.recent_energy,
                 )
                 self.async_set_updated_data(snapshot)
                 _LOGGER.debug("HVAC snapshot merged from get_status_now")
@@ -602,16 +592,6 @@ class BydGpsUpdateCoordinator(DataUpdateCoordinator[GpsInfo | None]):
         if self._polling_enabled:
             self.update_interval = self._fixed_interval
         self.async_update_listeners()
-
-    def set_polling_enabled(self, enabled: bool) -> bool:
-        was_enabled = self._polling_enabled
-        self._polling_enabled = bool(enabled)
-        self.update_interval = self._fixed_interval if self._polling_enabled else None
-        return not was_enabled and self._polling_enabled
-
-    async def async_set_polling_enabled(self, enabled: bool) -> None:
-        if self.set_polling_enabled(enabled):
-            await self.async_request_refresh()
 
     async def async_force_refresh(self) -> None:
         self._force_next_refresh = True

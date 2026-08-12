@@ -11,8 +11,6 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 DEFAULT_BASE_URL = "https://dilinksuperappserver-cn.byd.auto"
-DEFAULT_COUNTRY_CODE = "CN"
-DEFAULT_LANGUAGE = "zh-Hans"
 DEFAULT_TARGET_BRAND = "1"  # dynasty
 DEFAULT_APP_CHANNEL = "99"
 DEFAULT_CN_APP_INNER_VERSION = "512"
@@ -21,7 +19,6 @@ DEFAULT_NETWORK_OPERATOR = "\u4e2d\u56fd\u7535\u4fe1"
 DEFAULT_TBOX_VERSION = "3"
 DEFAULT_SOFT_TYPE = "0"
 DEFAULT_DEVICE_TYPE = "0"
-DEFAULT_IS_AUTO = "0"
 
 # Brand ID to name mapping
 BRAND_NAMES = {
@@ -43,9 +40,6 @@ class BydConfig:
     username: str
     password: str
     base_url: str = DEFAULT_BASE_URL
-    country_code: str = DEFAULT_COUNTRY_CODE
-    language: str = DEFAULT_LANGUAGE
-    time_zone: str = "Asia/Shanghai"
     control_pin: str | None = None
     target_brand: str = DEFAULT_TARGET_BRAND
     app_channel: str = DEFAULT_APP_CHANNEL
@@ -55,7 +49,6 @@ class BydConfig:
     tbox_version: str = DEFAULT_TBOX_VERSION
     soft_type: str = DEFAULT_SOFT_TYPE
     device_type: str = DEFAULT_DEVICE_TYPE
-    is_auto: str = DEFAULT_IS_AUTO
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +93,3 @@ class BydSession:
     sign_token: str = ""
     content_key: str = ""
     sign_key: str = ""
-
-    @property
-    def identifier(self) -> str:
-        """Return the primary identifier (superId for CN)."""
-        return self.super_id or self.user_id

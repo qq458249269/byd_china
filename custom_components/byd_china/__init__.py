@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -71,9 +72,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Migrate to China defaults
     data = dict(entry.data)
-    data[CONF_COUNTRY_CODE] = DEFAULT_COUNTRY_CODE
-    data[CONF_LANGUAGE] = DEFAULT_LANGUAGE
-    data[CONF_BASE_URL] = DEFAULT_BASE_URL
+    # Only fill in missing values; keep any user-provided overrides.
+    data.setdefault(CONF_COUNTRY_CODE, DEFAULT_COUNTRY_CODE)
+    data.setdefault(CONF_LANGUAGE, DEFAULT_LANGUAGE)
+    data.setdefault(CONF_BASE_URL, DEFAULT_BASE_URL)
     data.setdefault(CONF_TARGET_BRAND, DEFAULT_TARGET_BRAND)
     data.setdefault(CONF_CONTROL_PIN, "")
 
@@ -214,12 +216,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         gps_coordinators[vin] = gps_coordinator
 
     try:
+        # Refresh all vehicles concurrently so multi-vehicle setups don't
+        # serialize the (up to ~15s each) realtime polling on startup.
         _LOGGER.debug("Running first refresh for BYD telemetry coordinators")
-        for coordinator in coordinators.values():
-            await coordinator.async_config_entry_first_refresh()
+        results = await asyncio.gather(
+            *(
+                coordinator.async_config_entry_first_refresh()
+                for coordinator in coordinators.values()
+            ),
+            return_exceptions=True,
+        )
         _LOGGER.debug("Running first refresh for BYD GPS coordinators")
-        for gps_coordinator in gps_coordinators.values():
-            await gps_coordinator.async_config_entry_first_refresh()
+        results += await asyncio.gather(
+            *(
+                gps_coordinator.async_config_entry_first_refresh()
+                for gps_coordinator in gps_coordinators.values()
+            ),
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
     except Exception as exc:  # noqa: BLE001
         raise ConfigEntryNotReady from exc
 

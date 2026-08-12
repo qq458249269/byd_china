@@ -61,6 +61,9 @@ class BydClient:
         self._session_external = session
         self._session_internal: aiohttp.ClientSession | None = None
         self._session_data = BydSession()
+        # Monotonic counter bumped on every successful login; lets concurrent
+        # callers hit by the same dead session avoid re-logging in repeatedly.
+        self._session_generation: int = 0
         self._on_mqtt_event = on_mqtt_event
         self._on_command_ack = on_command_ack
         self._on_command_lifecycle = on_command_lifecycle
@@ -114,16 +117,15 @@ class BydClient:
 
         @functools.wraps(func)
         async def wrapper(self: "BydClient", *args: Any, **kwargs: Any) -> Any:
+            generation = self._session_generation
             try:
                 return await func(self, *args, **kwargs)
             except BydSessionExpiredError as exc:
                 async with self._relogin_lock:
-                    # Another concurrent call already re-logged in; retry once
-                    # with the refreshed session.
-                    try:
+                    # Re-login only if nobody refreshed the session while we
+                    # waited for the lock; otherwise retry with the new one.
+                    if self._session_generation == generation:
                         await self.login()
-                    except Exception:  # noqa: BLE001
-                        raise
                     _LOGGER.warning("Session expired (code 22): %s — re-logged in, retrying", exc)
                     return await func(self, *args, **kwargs)
         return wrapper
@@ -168,7 +170,7 @@ class BydClient:
                     raise BydTransportError(f"HTTP {response.status} {endpoint}: {text[:200]}")
 
                 body = await response.json(content_type=None)
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
             raise BydTransportError(f"Request failed for {endpoint}: {err}") from err
 
         if not body or "response" not in body:
@@ -302,6 +304,7 @@ class BydClient:
         self._session_data.content_key = md5_hex(self._session_data.encrypt_token)
         self._session_data.sign_key = md5_hex(self._session_data.sign_token)
 
+        self._session_generation += 1
         _LOGGER.info("Login successful, superId=%s", self._session_data.super_id)
 
     # -----------------------------------------------------------------------
@@ -422,6 +425,8 @@ class BydClient:
         except BydSessionExpiredError:
             raise
         except BydApiError:
+            raise
+        except BydTransportError:
             raise
         except Exception as exc:
             raise BydApiError(f"Realtime request failed: {exc}") from exc

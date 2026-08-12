@@ -6,7 +6,7 @@
   "documentation": "https://github.com/qq458249269/byd_china",
   "issue_tracker": "https://github.com/qq458249269/byd_china/issues",
   "iot_class": "cloud_polling",
-  "requirements": [],
-  "version": "1.0.6",
+  "requirements": ["pycryptodome"],
+  "version": "1.0.7",
   "icon": "mdi:car-electric"
 }
