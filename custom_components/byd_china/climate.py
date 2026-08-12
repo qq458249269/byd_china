@@ -323,7 +323,7 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
 
         params = self._build_ac_params()
         self._optimistic_mode = HVACMode.HEAT_COOL
-        self._optimistic_temp = params.get("_display_temp") or self._cloud_target_temp()
+        self._optimistic_temp = params.get("_display_temp")
         self._optimistic_until = _time.time() + 30
         self.async_write_ha_state()
         try:
@@ -408,10 +408,8 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         fan_mode_str: str | None = None,
         time_span: int | None = None,
     ) -> dict[str, Any]:
-        # temperature=None: prefer the cloud's current set temp so the car
-        # keeps its setting instead of resetting; fall back to 25°C when the
-        # cloud hasn't reported a valid temperature.
-        byd_temp = None
+        # temperature=None: turn on with a fixed 25°C. The cloud's reported
+        # set temp is unreliable (often missing), so don't trust it.
         if temperature is not None:
             try:
                 byd_temp = celsius_to_scale(temperature)
@@ -420,12 +418,7 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
                     f"空调温度超出支持范围（17-33°C）：{temperature}"
                 ) from None
         else:
-            try:
-                byd_temp = celsius_to_scale(self._cloud_target_temp())
-            except (ValueError, TypeError):
-                # Cloud temp missing or out of range → use a sane default so
-                # the OPENAIR command always carries a valid temperature.
-                byd_temp = celsius_to_scale(25.0)
+            byd_temp = celsius_to_scale(25.0)
 
         if cycle_mode is None:
             preset = self.preset_mode
