@@ -43,19 +43,6 @@ jobs:
         env:
           VERSION: ${{ steps.calc.outputs.version }}
 
-      - name: Sync manifest version back to master
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/byd_china/manifest.json
-          git commit -m "chore: sync manifest version to $VERSION [skip ci]"
-          # Rebase on any commits pushed while this workflow ran, then push
-          # back. "[skip ci]" in the message stops this push from retriggering.
-          git pull --rebase origin master
-          git push origin master
-        env:
-          VERSION: ${{ steps.calc.outputs.version }}
-
       - name: Package component
         run: |
           find custom_components/byd_china -name "__pycache__" -type d -prune -exec rm -rf {} +
@@ -72,3 +59,20 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: byd_china.zip
+
+      # Keep the repo manifest in sync with the release tag so HACS/HA shows
+      # the same version everywhere. Runs AFTER the release so a sync failure
+      # can never block publishing. "[skip ci]" stops this push from
+      # retriggering the workflow.
+      - name: Sync manifest version back to master
+        if: always()
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/byd_china/manifest.json
+          git commit -m "chore: sync manifest version to $VERSION [skip ci]"
+          git pull --rebase origin master
+          git push origin master
+        env:
+          VERSION: ${{ steps.calc.outputs.version }}
