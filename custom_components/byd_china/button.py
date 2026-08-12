@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .pybyd_china.models.vehicle import Vehicle
 
+from .climate import BYD_TEMP_MIN, BYD_TEMP_MAX, BYD_TEMP_OFFSET
 from .const import DOMAIN
 from .coordinator import BydDataUpdateCoordinator
 from .entity import BydVehicleEntity
@@ -75,7 +76,20 @@ class BydButton(BydVehicleEntity, ButtonEntity):
         try:
             # execute_control internally polls remoteControlResult until the
             # cloud confirms the command; no follow-up state refresh here.
-            await self.coordinator.execute_control(self.entity_description.command_type)
+            command_type = self.entity_description.command_type
+            if command_type == "OPENAIR":
+                # Send default temperature (25°C) so the car doesn't keep last-set 27°C
+                params = {
+                    "cycleMode": 2,
+                    "remoteMode": 4,
+                    "windLevel": 0,
+                    "timeSpan": 1,
+                    "mainSettingTemp": 25 - BYD_TEMP_OFFSET,
+                    "copilotSettingTemp": 25 - BYD_TEMP_OFFSET,
+                }
+                await self.coordinator.execute_control(command_type, params)
+            else:
+                await self.coordinator.execute_control(command_type)
         except Exception as exc:
             _LOGGER.error("Button command %s failed: %s", self.entity_description.command_type, exc)
             raise
