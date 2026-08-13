@@ -76,7 +76,8 @@
     },
     "number": {
       "realtime_poll_interval": { "name": "Telemetry poll interval (all vehicles)" },
-      "gps_poll_interval": { "name": "GPS poll interval (all vehicles)" }
+      "gps_poll_interval": { "name": "GPS poll interval (all vehicles)" },
+      "ac_temperature": { "name": "Default A/C temperature" }
     },
     "sensor": {
       "vin": { "name": "VIN" },

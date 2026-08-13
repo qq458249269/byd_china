@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .pybyd_china.models.vehicle import Vehicle
 
-from .const import DOMAIN
+from .const import CONF_AC_TEMPERATURE, DEFAULT_AC_TEMPERATURE, DOMAIN
 from .coordinator import BydDataUpdateCoordinator
 from .entity import BydVehicleEntity
 from .pybyd_china._constants import celsius_to_scale, scale_to_celsius
@@ -69,7 +69,7 @@ async def async_setup_entry(
     entities: list[ClimateEntity] = []
     for vin, coordinator in coordinators.items():
         vehicle = coordinator.vehicle
-        entities.append(BydClimate(coordinator, vin, vehicle))
+        entities.append(BydClimate(entry, coordinator, vin, vehicle))
 
     async_add_entities(entities)
 
@@ -102,10 +102,12 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
 
     def __init__(
         self,
+        entry: ConfigEntry,
         coordinator: BydDataUpdateCoordinator,
         vin: str,
         vehicle: Vehicle,
     ) -> None:
+        self._entry = entry
         self._vin = vin
         self._vehicle = vehicle
         self._attr_unique_id = f"{vin}_climate_byd_climate"
@@ -398,6 +400,27 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
             _LOGGER.error("OPENAIR (set swing/timespan) failed: %s", exc)
             raise
 
+    def _default_ac_temperature(self) -> float:
+        """Return the persisted default A/C temperature for this vehicle.
+
+        Falls back to the cloud's current set temperature when no value has
+        been persisted, then to the built-in 25 °C default.
+        """
+        temps = self._entry.options.get(CONF_AC_TEMPERATURE, {})
+        if isinstance(temps, dict):
+            value = temps.get(self._vin)
+        else:
+            value = temps
+        try:
+            temp = float(value)
+        except (TypeError, ValueError):
+            temp = self.target_temperature
+        if not (BYD_TEMP_MIN <= temp <= BYD_TEMP_MAX):
+            temp = self.target_temperature
+        if not (BYD_TEMP_MIN <= temp <= BYD_TEMP_MAX):
+            temp = DEFAULT_AC_TEMPERATURE
+        return temp
+
     def _build_ac_params(
         self,
         temperature: float | None = None,
@@ -405,11 +428,11 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         fan_mode_str: str | None = None,
         time_span: int | None = None,
     ) -> dict[str, Any]:
-        # temperature=None: use the cloud's current set temp so the car keeps
-        # its setting; fall back to 25°C only when the cloud hasn't reported a
-        # valid value.
+        # temperature=None: use the persisted default A/C temperature (or the
+        # cloud's current set temp when no default is configured) so the car
+        # keeps its setting; fall back to 25°C only when nothing is available.
         if temperature is None:
-            temperature = self.target_temperature
+            temperature = self._default_ac_temperature()
         if not (BYD_TEMP_MIN <= (temperature or 0) <= BYD_TEMP_MAX):
             temperature = 25.0
         byd_temp = celsius_to_scale(temperature)

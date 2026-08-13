@@ -19,6 +19,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .pybyd_china.client import BydClient
 
 from .const import (
+    CONF_AC_TEMPERATURE,
     CONF_BASE_URL,
     CONF_CONTROL_PIN,
     CONF_COUNTRY_CODE,
@@ -133,7 +134,7 @@ async def _async_handle_entry_update(hass: HomeAssistant, entry: ConfigEntry) ->
         for key in set(previous_options) | set(current_options)
         if previous_options.get(key) != current_options.get(key)
     }
-    poll_keys = {CONF_POLL_INTERVAL, CONF_GPS_POLL_INTERVAL}
+    poll_keys = {CONF_POLL_INTERVAL, CONF_GPS_POLL_INTERVAL, CONF_AC_TEMPERATURE}
 
     if changed_keys and changed_keys.issubset(poll_keys):
         _apply_poll_intervals_from_options(entry, entry_data)

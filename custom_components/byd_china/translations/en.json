@@ -64,7 +64,8 @@
     },
     "number": {
       "realtime_poll_interval": { "name": "Telemetry poll interval (hours, all vehicles)" },
-      "gps_poll_interval": { "name": "GPS poll interval (hours, all vehicles)" }
+      "gps_poll_interval": { "name": "GPS poll interval (hours, all vehicles)" },
+      "ac_temperature": { "name": "Default A/C temperature" }
     },
     "lock": {
       "vehicle_lock": { "name": "Door locks" }

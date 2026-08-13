@@ -25,6 +25,12 @@ CONF_DEVICE_PROFILE = "device_profile"
 CONF_DEBUG_DUMPS = "debug_dumps"
 CONF_TARGET_BRAND = "target_brand"
 CONF_CONTROL_PIN = "control_pin"
+CONF_AC_TEMPERATURE = "ac_temperature"
+
+DEFAULT_AC_TEMPERATURE = 25.0
+AC_TEMP_MIN = 17.0
+AC_TEMP_MAX = 33.0
+AC_TEMP_STEP = 1.0
 
 DEFAULT_POLL_INTERVAL = 21600  # seconds = 6 hours
 DEFAULT_GPS_POLL_INTERVAL = 21600  # seconds = 6 hours

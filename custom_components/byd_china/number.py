@@ -6,15 +6,20 @@ import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import UnitOfTime
+from homeassistant.const import UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .pybyd_china.models.vehicle import Vehicle
 
 from .const import (
+    AC_TEMP_MAX,
+    AC_TEMP_MIN,
+    AC_TEMP_STEP,
+    CONF_AC_TEMPERATURE,
     CONF_GPS_POLL_INTERVAL,
     CONF_POLL_INTERVAL,
+    DEFAULT_AC_TEMPERATURE,
     DOMAIN,
     MAX_GPS_POLL_INTERVAL,
     MAX_POLL_INTERVAL,
@@ -52,6 +57,9 @@ async def async_setup_entry(
         vehicle = coordinator.vehicle
         entities.append(
             BydRealtimePollIntervalNumber(hass, entry, coordinator, vin, vehicle)
+        )
+        entities.append(
+            BydAcTemperatureNumber(hass, entry, coordinator, vin, vehicle)
         )
 
         gps_coordinator = gps_coordinators.get(vin)
@@ -172,6 +180,66 @@ class BydGpsPollIntervalNumber(BydVehicleEntity, BydPollIntervalNumberMixin, Num
             gps_coordinator.set_poll_interval(interval)
 
         options = {**self._entry.options, CONF_GPS_POLL_INTERVAL: interval}
+        if options != self._entry.options:
+            self.hass.config_entries.async_update_entry(self._entry, options=options)
+        self.async_write_ha_state()
+
+
+class BydAcTemperatureNumber(BydVehicleEntity, NumberEntity):
+    """Runtime-configurable default A/C temperature.
+
+    This is the temperature applied whenever the A/C is turned on *without* an
+    explicitly specified temperature (e.g. via ``climate.turn_on`` or the
+    ``OPENAIR`` button).  The value is persisted per-vehicle in the entry
+    options so it survives restarts.
+    """
+
+    _attr_translation_key = "ac_temperature"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_native_min_value = AC_TEMP_MIN
+    _attr_native_max_value = AC_TEMP_MAX
+    _attr_native_step = AC_TEMP_STEP
+    _attr_mode = NumberMode.BOX
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        coordinator: BydDataUpdateCoordinator,
+        vin: str,
+        vehicle: Vehicle,
+    ) -> None:
+        self.hass = hass
+        self._entry = entry
+        self._vin = vin
+        self._vehicle = vehicle
+        self._attr_unique_id = f"{vin}_number_ac_temperature"
+        super().__init__(coordinator)
+
+    @property
+    def native_value(self) -> float:
+        """Return the persisted default A/C temperature for this vehicle."""
+        temps = self._entry.options.get(CONF_AC_TEMPERATURE, {})
+        if isinstance(temps, dict):
+            value = temps.get(self._vin)
+        else:
+            value = temps
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return DEFAULT_AC_TEMPERATURE
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set and persist the default A/C temperature for this vehicle."""
+        value = max(AC_TEMP_MIN, min(AC_TEMP_MAX, float(value)))
+
+        temps = dict(self._entry.options.get(CONF_AC_TEMPERATURE, {}))
+        if not isinstance(temps, dict):
+            temps = {}
+        temps[self._vin] = value
+
+        options = {**self._entry.options, CONF_AC_TEMPERATURE: temps}
         if options != self._entry.options:
             self.hass.config_entries.async_update_entry(self._entry, options=options)
         self.async_write_ha_state()

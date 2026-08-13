@@ -64,7 +64,8 @@
     },
     "number": {
       "realtime_poll_interval": { "name": "遥测轮询间隔（小时，所有车辆）" },
-      "gps_poll_interval": { "name": "GPS 轮询间隔（小时，所有车辆）" }
+      "gps_poll_interval": { "name": "GPS 轮询间隔（小时，所有车辆）" },
+      "ac_temperature": { "name": "默认空调温度" }
     },
     "lock": {
       "vehicle_lock": { "name": "门锁" }
