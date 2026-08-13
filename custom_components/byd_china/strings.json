@@ -69,7 +69,9 @@
       "window_close": { "name": "Close windows" },
       "find_car": { "name": "Find car" },
       "flash_lights": { "name": "Flash lights" },
-      "stop_engine": { "name": "Stop engine" }
+      "stop_engine": { "name": "Stop engine" },
+      "refresh_realtime": { "name": "Refresh telemetry" },
+      "refresh_gps": { "name": "Refresh GPS location" }
     },
     "climate": {
       "byd_climate": { "name": "A/C" }
