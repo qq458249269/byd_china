@@ -9,12 +9,13 @@ from typing import Any
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .pybyd_china.models.vehicle import Vehicle
 
 from .climate import BYD_TEMP_OFFSET
 from .const import CONF_AC_TEMPERATURE, DEFAULT_AC_TEMPERATURE, DOMAIN
-from .coordinator import BydDataUpdateCoordinator
+from .coordinator import BydDataUpdateCoordinator, BydGpsUpdateCoordinator
 from .entity import BydVehicleEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,11 @@ BUTTON_DESCRIPTIONS: tuple[BydButtonDescription, ...] = (
     BydButtonDescription(key="flash_lights", command_type="FLASHLIGHTNOWHISTLE", icon="mdi:car-light-high"),
 )
 
+REFRESH_BUTTON_DESCRIPTIONS: tuple[BydButtonDescription, ...] = (
+    BydButtonDescription(key="refresh_realtime", icon="mdi:refresh"),
+    BydButtonDescription(key="refresh_gps", icon="mdi:map-marker-refresh"),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -44,12 +50,26 @@ async def async_setup_entry(
 ) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
     coordinators: dict[str, BydDataUpdateCoordinator] = data["coordinators"]
+    gps_coordinators: dict[str, BydGpsUpdateCoordinator] = data.get(
+        "gps_coordinators", {}
+    )
 
     entities: list[ButtonEntity] = []
     for vin, coordinator in coordinators.items():
         vehicle = coordinator.vehicle
         for description in BUTTON_DESCRIPTIONS:
             entities.append(BydButton(entry, coordinator, vin, vehicle, description))
+        gps_coordinator = gps_coordinators.get(vin)
+        for description in REFRESH_BUTTON_DESCRIPTIONS:
+            entities.append(
+                BydRefreshButton(
+                    coordinator,
+                    gps_coordinator,
+                    vin,
+                    vehicle,
+                    description,
+                )
+            )
 
     async_add_entities(entities)
 
@@ -110,3 +130,44 @@ class BydButton(BydVehicleEntity, ButtonEntity):
             "mainSettingTemp": byd_temp,
             "copilotSettingTemp": byd_temp,
         }
+
+class BydRefreshButton(BydVehicleEntity, ButtonEntity):
+    """Button to actively refresh vehicle data from the BYD cloud."""
+
+    _attr_has_entity_name = True
+    entity_description: BydButtonDescription
+
+    def __init__(
+        self,
+        coordinator: BydDataUpdateCoordinator,
+        gps_coordinator: BydGpsUpdateCoordinator | None,
+        vin: str,
+        vehicle: Vehicle,
+        description: BydButtonDescription,
+    ) -> None:
+        self.entity_description = description
+        self._attr_translation_key = description.key
+        self._vin = vin
+        self._vehicle = vehicle
+        self._gps_coordinator = gps_coordinator
+        self._attr_unique_id = f"{vin}_button_{description.key}"
+        super().__init__(coordinator)
+
+    async def async_press(self) -> None:
+        try:
+            if self.entity_description.key == "refresh_gps":
+                if self._gps_coordinator is None:
+                    raise HomeAssistantError(
+                        f"GPS coordinator not available for {self._vin[-6:]}"
+                    )
+                await self._gps_coordinator.async_force_refresh()
+            else:
+                await self.coordinator.async_force_refresh()
+        except Exception as exc:
+            _LOGGER.error(
+                "Refresh button %s failed for %s: %s",
+                self.entity_description.key,
+                self._vin[-6:],
+                exc,
+            )
+            raise

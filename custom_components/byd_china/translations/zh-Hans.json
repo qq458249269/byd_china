@@ -57,7 +57,9 @@
       "open_trunk": { "name": "打开后备箱" },
       "window_close": { "name": "关闭车窗" },
       "find_car": { "name": "寻车" },
-      "flash_lights": { "name": "闪灯" }
+      "flash_lights": { "name": "闪灯" },
+      "refresh_realtime": { "name": "刷新实时数据" },
+      "refresh_gps": { "name": "刷新 GPS 定位" }
     },
     "climate": {
       "byd_climate": { "name": "空调控制" }

@@ -57,7 +57,9 @@
       "open_trunk": { "name": "Open trunk" },
       "window_close": { "name": "Close windows" },
       "find_car": { "name": "Find car" },
-      "flash_lights": { "name": "Flash lights" }
+      "flash_lights": { "name": "Flash lights" },
+      "refresh_realtime": { "name": "Refresh telemetry" },
+      "refresh_gps": { "name": "Refresh GPS location" }
     },
     "climate": {
       "byd_climate": { "name": "Climate control" }
