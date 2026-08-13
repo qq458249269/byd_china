@@ -18,28 +18,46 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read manifest version
-        id: version
-        run: |
-          VERSION=$(python3 -c "import json; print(json.load(open('custom_components/byd_china/manifest.json'))['version'])")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "manifest version $VERSION"
+      - name: Fetch tags
+        run: git fetch --tags --force
 
-      - name: Check tag does not already exist
-        id: check_tag
+      - name: Compute daily increment version
+        id: calc
         run: |
-          git fetch --tags --force
-          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists, skipping release"
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          DAY=$(date +%Y.%m.%d)
+          LAST=$(git tag --list | grep -E "^${DAY}\." | sed -E "s/^${DAY}\.//" | sort -n | tail -n 1)
+          if [ -z "$LAST" ]; then LAST=0; fi
+          VERSION="${DAY}.$((LAST + 1))"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "generated version $VERSION"
+
+      - name: Align manifest version
+        run: |
+          python3 - "$VERSION" <<'EOF'
+          import json, sys
+          path = "custom_components/byd_china/manifest.json"
+          data = json.load(open(path, encoding="utf-8"))
+          data["version"] = sys.argv[1]
+          json.dump(data, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+          EOF
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.calc.outputs.version }}
+
+      # Commit the version bump to master BEFORE building the release, so the
+      # repo manifest always matches the released tag. "[skip ci]" prevents
+      # this push from retriggering the workflow.
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/byd_china/manifest.json
+          git commit -m "chore: bump version to $VERSION [skip ci]"
+          git pull --rebase origin master
+          git push origin master
+        env:
+          VERSION: ${{ steps.calc.outputs.version }}
 
       - name: Package component
-        if: steps.check_tag.outputs.exists == 'false'
         run: |
           find custom_components/byd_china -name "__pycache__" -type d -prune -exec rm -rf {} +
           find custom_components/byd_china -name "*.pyc" -delete
@@ -47,11 +65,10 @@ jobs:
           zip -r ../byd_china.zip byd_china
 
       - name: Create pre-release
-        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
+          tag_name: ${{ steps.calc.outputs.version }}
+          name: v${{ steps.calc.outputs.version }}
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
