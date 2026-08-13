@@ -405,17 +405,14 @@ class BydClimate(BydVehicleEntity, ClimateEntity):
         fan_mode_str: str | None = None,
         time_span: int | None = None,
     ) -> dict[str, Any]:
-        # temperature=None: turn on with a fixed 25°C. The cloud's reported
-        # set temp is unreliable (often missing), so don't trust it.
-        if temperature is not None:
-            try:
-                byd_temp = celsius_to_scale(temperature)
-            except ValueError:
-                raise ValueError(
-                    f"空调温度超出支持范围（17-33°C）：{temperature}"
-                ) from None
-        else:
-            byd_temp = celsius_to_scale(25.0)
+        # temperature=None: use the cloud's current set temp so the car keeps
+        # its setting; fall back to 25°C only when the cloud hasn't reported a
+        # valid value.
+        if temperature is None:
+            temperature = self.target_temperature
+        if not (BYD_TEMP_MIN <= (temperature or 0) <= BYD_TEMP_MAX):
+            temperature = 25.0
+        byd_temp = celsius_to_scale(temperature)
 
         if cycle_mode is None:
             preset = self.preset_mode
