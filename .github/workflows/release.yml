@@ -1,4 +1,4 @@
-name: Pre-release on main push
+name: Release on master push
 
 on:
   push:
@@ -18,32 +18,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch tags
-        run: git fetch --tags --force
-
-      - name: Compute daily increment version
-        id: calc
+      - name: Read manifest version
+        id: version
         run: |
-          DAY=$(date +%Y.%m.%d)
-          LAST=$(git tag --list | grep -E "^${DAY}\." | sed -E "s/^${DAY}\.//" | sort -n | tail -n 1)
-          if [ -z "$LAST" ]; then LAST=0; fi
-          VERSION="${DAY}.$((LAST + 1))"
+          VERSION=$(python3 -c "import json; print(json.load(open('custom_components/byd_china/manifest.json'))['version'])")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "generated version $VERSION"
+          echo "manifest version $VERSION"
 
-      - name: Align manifest version
+      - name: Check tag does not already exist
+        id: check_tag
         run: |
-          python3 - "$VERSION" <<'EOF'
-          import json, sys
-          path = "custom_components/byd_china/manifest.json"
-          data = json.load(open(path, encoding="utf-8"))
-          data["version"] = sys.argv[1]
-          json.dump(data, open(path, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-          EOF
+          git fetch --tags --force
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists, skipping release"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
         env:
-          VERSION: ${{ steps.calc.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Package component
+        if: steps.check_tag.outputs.exists == 'false'
         run: |
           find custom_components/byd_china -name "__pycache__" -type d -prune -exec rm -rf {} +
           find custom_components/byd_china -name "*.pyc" -delete
@@ -51,28 +47,12 @@ jobs:
           zip -r ../byd_china.zip byd_china
 
       - name: Create pre-release
+        if: steps.check_tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.calc.outputs.version }}
-          name: v${{ steps.calc.outputs.version }}
+          tag_name: ${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: byd_china.zip
-
-      # Keep the repo manifest in sync with the release tag so HACS/HA shows
-      # the same version everywhere. Runs AFTER the release so a sync failure
-      # can never block publishing. "[skip ci]" stops this push from
-      # retriggering the workflow.
-      - name: Sync manifest version back to master
-        if: always()
-        continue-on-error: true
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/byd_china/manifest.json
-          git commit -m "chore: sync manifest version to $VERSION [skip ci]"
-          git pull --rebase origin master
-          git push origin master
-        env:
-          VERSION: ${{ steps.calc.outputs.version }}
